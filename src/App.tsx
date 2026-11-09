@@ -7,24 +7,30 @@ import { useGameStore } from './store/useGameStore';
 export const App: React.FC = () => {
   const phase = useGameStore((state) => state.phase);
   const setPhase = useGameStore((state) => state.setPhase);
+  const setIntroStage = useGameStore((state) => state.setIntroStage);
   const quality = useGameStore((state) => state.quality);
   const toggleQuality = useGameStore((state) => state.toggleQuality);
 
+  const handleReplayIntro = () => {
+    setIntroStage(1);
+    setPhase('loading');
+  };
+
   return (
     <main className="app-container">
-      {/* Phase 2 Animated Loading & Intro Sequence */}
+      {/* Overhauled 6-Stage Brushstroke Loading & Intro Screen */}
       <LoadingScreen />
 
-      {/* Main 3D Interactive World (Pre-renders underneath for seamless transition) */}
+      {/* Full 3D Artistic Low-Poly Sunset Fantasy Garden */}
       <GardenScene />
 
-      {/* Phase 2 Verification Badge (Visible once inside the garden) */}
+      {/* Exploration Controls & Replay Bar (Visible after entering the garden) */}
       {phase === 'exploring' && (
         <div className="phase1-status-badge">
-          <h2>Keepsake — Phase 2 Active</h2>
+          <h2>Keepsake — Sunset Memory Garden</h2>
           <p>
-            Animated brushstroke loading sequence complete. Ready for Phase 3
-            (Full 3D Memory Garden Environment).
+            Drag with left-click to orbit the 3D garden, or replay the
+            brushstroke intro sequence at any time.
           </p>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button className="phase1-quality-toggle" onClick={toggleQuality}>
@@ -33,9 +39,9 @@ export const App: React.FC = () => {
             </button>
             <button
               className="phase1-quality-toggle"
-              onClick={() => setPhase('loading')}
+              onClick={handleReplayIntro}
             >
-              <strong>↻ Replay Loading Intro</strong>
+              <strong>↻ Replay Loading Sequence</strong>
             </button>
           </div>
         </div>

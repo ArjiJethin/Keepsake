@@ -1,324 +1,303 @@
 /* src/components/LoadingScreen/LoadingScreen.css */
 
-.loading-screen-overlay {
+.keepsake-loading-overlay {
   position: fixed;
   inset: 0;
   z-index: 100;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  background-color: #3b2d38;
-  transition: opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1),
-    visibility 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
+  transition: opacity 0.85s cubic-bezier(0.4, 0, 0.2, 1),
+    visibility 0.85s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.loading-screen-overlay--fade-out {
+.keepsake-loading-overlay--fade-out {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
 }
 
-/* Backdrop & Low-Poly SVG Scenery */
-.loading-backdrop {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  transform: scale(1.03);
-  transition: opacity 1.2s ease-out, transform 6s ease-out;
-}
-
-.loading-backdrop.visible {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.loading-scenery-svg {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-/* Subtle floating island bobbing animation */
-.floating-island-group {
-  animation: islandFloat 7s ease-in-out infinite;
-}
-
-@keyframes islandFloat {
-  0%,
-  100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-8px);
-  }
-}
-
-/* Drifting Sakura Petals */
-.petal-container {
+/* Soft Painterly Atmosphere Veil over the 3D Sunset Scene */
+.loading-atmosphere-veil {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  overflow: hidden;
+  background: radial-gradient(
+    circle at 50% 42%,
+    rgba(232, 180, 156, 0.08) 0%,
+    rgba(72, 52, 62, 0.26) 100%
+  );
+  transition: background 1.4s ease, backdrop-filter 1.4s ease;
 }
 
-.floating-petal {
-  position: absolute;
-  top: -30px;
-  width: 14px;
-  height: 10px;
-  background: linear-gradient(135deg, #ffd6cf 0%, #e59891 100%);
-  border-radius: 80% 15% 80% 15%;
-  opacity: 0.75;
-  box-shadow: 0 2px 6px rgba(235, 165, 155, 0.35);
-  animation: petalFall linear infinite;
+.loading-atmosphere-veil--misty {
+  background: radial-gradient(
+    circle at 50% 45%,
+    rgba(222, 174, 158, 0.38) 0%,
+    rgba(148, 116, 128, 0.48) 100%
+  );
+  backdrop-filter: blur(2px);
 }
 
-.petal-2 {
-  width: 11px;
-  height: 8px;
-  opacity: 0.55;
-}
-
-.petal-3 {
-  width: 16px;
-  height: 11px;
-  background: linear-gradient(135deg, #ffe5de 0%, #dfa19b 100%);
-}
-
-@keyframes petalFall {
-  0% {
-    transform: translate3d(0, -20px, 0) rotate(0deg);
-    opacity: 0;
-  }
-  15% {
-    opacity: 0.8;
-  }
-  85% {
-    opacity: 0.75;
-  }
-  100% {
-    transform: translate3d(-160px, 105vh, 0) rotate(380deg);
-    opacity: 0;
-  }
-}
-
-/* Center Brand & Title Layout */
-.loading-center-content {
+/* Main Centered Stack matching LoadingScreen.png proportions */
+.loading-content-frame {
   position: relative;
   z-index: 10;
+  width: min(92vw, 880px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  text-align: center;
-  margin-top: -4vh;
-  padding: 0 24px;
+  justify-content: center;
+  margin-top: -3vh;
 }
 
-.logo-reveal-container {
+.brand-header-group {
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
+  opacity: 0;
+  transition: opacity 0.45s ease;
 }
 
-.logo-brush-wrapper {
+.brand-header-group--visible {
+  opacity: 1;
+}
+
+.logo-svg-stage {
   position: relative;
-  display: inline-block;
-  padding: 10px 32px 0;
+  width: min(88vw, 760px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-/* Calligraphic Brushstroke Title */
-.keepsake-main-logo {
-  font-family: var(--font-logo);
-  font-size: clamp(4.8rem, 9vw, 7.6rem);
-  font-weight: 400;
-  color: #f7ecda;
-  line-height: 1.05;
-  letter-spacing: 0.01em;
-  text-shadow: 0 6px 24px rgba(56, 36, 34, 0.42),
-    0 2px 4px rgba(45, 29, 24, 0.3);
-  clip-path: inset(0 100% 0 0);
-  transition: clip-path 1.95s cubic-bezier(0.22, 0.61, 0.36, 1);
-  position: relative;
-}
-
-.logo-reveal-container.active .keepsake-main-logo {
-  clip-path: inset(0 0% 0 0);
-}
-
-.logo-leaf-accent {
-  position: absolute;
-  top: 12px;
-  right: -28px;
-  filter: drop-shadow(0 3px 8px rgba(45, 29, 24, 0.35));
-}
-
-.logo-underline-svg {
-  width: clamp(220px, 32vw, 360px);
-  height: 26px;
-  margin-top: -18px;
+.keepsake-logo-svg {
+  width: 100%;
+  height: auto;
   overflow: visible;
+  display: block;
 }
 
-.logo-underline-path {
-  stroke-dasharray: 360;
-  stroke-dashoffset: 360;
-  filter: drop-shadow(0 3px 8px rgba(45, 29, 24, 0.35));
+.keepsake-svg-wordmark {
+  font-family: var(--font-logo);
+  font-size: 148px;
+  font-weight: 400;
+  fill: #f7ecda;
+  letter-spacing: 0.01em;
 }
 
-.logo-reveal-container.active .logo-underline-path {
-  animation: drawUnderline 1.2s cubic-bezier(0.25, 1, 0.5, 1) 0.9s forwards;
+/* Progressive Calligraphic Brush Mask Animation */
+.mask-reveal-stroke {
+  stroke-dasharray: 840;
+  stroke-dashoffset: 840;
 }
 
-@keyframes drawUnderline {
+.mask-reveal-stroke--active {
+  animation: paintLogoMask 2.35s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+@keyframes paintLogoMask {
+  0% {
+    stroke-dashoffset: 840;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Sweeping Underline Flourish Animation */
+.keepsake-underline-flourish {
+  stroke-dasharray: 540;
+  stroke-dashoffset: 540;
+}
+
+.keepsake-underline-flourish--active {
+  animation: drawFlourishStroke 1.35s cubic-bezier(0.25, 1, 0.5, 1) 0.95s
+    forwards;
+}
+
+@keyframes drawFlourishStroke {
   to {
     stroke-dashoffset: 0;
   }
 }
 
-/* Animated Paintbrush following the stroke in Stage 2 */
-.animated-paintbrush {
+/* Artist Paintbrush Follower matching LoadingAnimation.png Frames 2 & 3 */
+.artist-paintbrush-follower {
   position: absolute;
-  top: 28%;
-  left: 0;
+  top: 22%;
+  left: 14%;
   pointer-events: none;
-  filter: drop-shadow(0 8px 14px rgba(28, 18, 14, 0.45));
-  animation: brushSweep 1.95s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  filter: drop-shadow(0 12px 18px rgba(38, 22, 18, 0.48));
+  animation: artistBrushChoreography 2.35s cubic-bezier(0.22, 0.61, 0.36, 1)
+    forwards;
 }
 
-@keyframes brushSweep {
+@keyframes artistBrushChoreography {
   0% {
-    left: 2%;
-    transform: translateY(8px) rotate(-12deg);
+    left: 16%;
+    top: 26%;
+    transform: rotate(-14deg) scale(0.96);
     opacity: 0;
   }
-  12% {
+  10% {
     opacity: 1;
   }
-  50% {
-    transform: translateY(-10px) rotate(-4deg);
+  28% {
+    left: 34%;
+    top: 14%;
+    transform: rotate(-5deg) scale(1);
   }
-  88% {
+  52% {
+    left: 52%;
+    top: 30%;
+    transform: rotate(-11deg);
+  }
+  76% {
+    left: 70%;
+    top: 20%;
+    transform: rotate(-6deg);
     opacity: 1;
+  }
+  92% {
+    left: 78%;
+    top: 38%;
+    transform: rotate(-16deg);
+    opacity: 0.85;
   }
   100% {
-    left: 92%;
-    transform: translateY(4px) rotate(-18deg);
+    left: 84%;
+    top: 32%;
+    transform: rotate(-22deg);
     opacity: 0;
   }
 }
 
-/* Subtitle & Botanical Divider (Stage 3+) */
-.subtitle-block {
-  margin-top: 8px;
+/* Subtitle & Botanical Sprig Divider */
+.subtitle-ornament-group {
+  margin-top: -6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.8s ease, transform 0.8s ease;
+  transition: opacity 0.85s ease, transform 0.85s ease;
 }
 
-.subtitle-block.visible {
+.subtitle-ornament-group--visible {
   opacity: 1;
   transform: translateY(0);
 }
 
-.keepsake-subtitle {
+.keepsake-spaced-subtitle {
   font-family: var(--font-serif);
-  font-size: clamp(0.85rem, 1.35vw, 1.08rem);
+  font-size: clamp(0.82rem, 1.35vw, 1.08rem);
   font-weight: 600;
-  letter-spacing: 0.28em;
-  color: #f4e7d4;
+  letter-spacing: 0.31em;
+  color: #f7ecda;
   text-transform: uppercase;
-  text-shadow: 0 2px 10px rgba(42, 26, 24, 0.5);
+  text-shadow: 0 2px 12px rgba(42, 26, 24, 0.65);
+  margin-right: -0.31em;
 }
 
-.botanical-divider {
+.botanical-divider-row {
+  margin-top: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  margin-top: 8px;
-  opacity: 0.9;
+  gap: 14px;
 }
 
-.divider-line {
-  width: 48px;
-  height: 1px;
+.ornament-line {
+  width: 56px;
+  height: 1.2px;
   background: linear-gradient(
     90deg,
-    transparent,
-    rgba(244, 231, 212, 0.85),
-    transparent
+    transparent 0%,
+    rgba(247, 236, 218, 0.88) 50%,
+    transparent 100%
   );
 }
 
-/* Action Area: Frame 5 Button & Frame 6 Circular Loader */
-.loading-action-area {
-  margin-top: 44px;
-  min-height: 140px;
+.ornament-sprig-svg {
+  filter: drop-shadow(0 2px 6px rgba(42, 26, 24, 0.45));
+}
+
+/* Lower Slot for Interactive Stone Button & Circular Loader */
+.loading-lower-slot {
+  margin-top: 32px;
+  min-height: 175px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* Frame 5: "Enter the Garden" Carved Stone/Parchment Button */
-.enter-garden-btn {
+/* Frame 5: Sculpted Low-Poly Stone & Parchment Button */
+.sculpted-stone-enter-btn {
   position: relative;
-  padding: 5px;
-  border-radius: 999px;
-  border: 1.5px solid rgba(214, 190, 162, 0.85);
-  background: linear-gradient(180deg, #cbb39b 0%, #9e8874 100%);
-  box-shadow: 0 10px 28px rgba(38, 25, 22, 0.45),
-    0 0 22px rgba(255, 214, 153, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 0;
   cursor: pointer;
-  animation: fadeInUp 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  filter: drop-shadow(0 12px 24px rgba(34, 21, 18, 0.5))
+    drop-shadow(0 0 18px rgba(255, 215, 150, 0.25));
+  animation: riseInSmooth 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  transition: transform 0.25s ease, filter 0.25s ease;
 }
 
-.enter-garden-btn:hover {
-  transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 14px 34px rgba(38, 25, 22, 0.55),
-    0 0 32px rgba(255, 219, 158, 0.5);
+.sculpted-stone-enter-btn:hover {
+  transform: translateY(-3px) scale(1.025);
+  filter: drop-shadow(0 16px 28px rgba(34, 21, 18, 0.6))
+    drop-shadow(0 0 28px rgba(255, 220, 158, 0.52));
 }
 
-.enter-garden-btn:active {
+.sculpted-stone-enter-btn:active {
   transform: translateY(0) scale(0.99);
 }
 
-.enter-garden-btn__inner {
+.stone-btn-svg {
   display: block;
-  padding: 12px 42px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #efe2cf 0%, #dccab2 100%);
-  border: 1px solid rgba(255, 250, 240, 0.65);
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 1.35rem;
-  font-weight: 600;
-  color: #3d3028;
-  letter-spacing: 0.03em;
 }
 
-/* Frame 6: Circular Brushstroke Loader & "Entering the Garden..." */
-.entering-loader-wrapper {
+.stone-btn-label {
+  position: absolute;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 1.48rem;
+  font-weight: 600;
+  color: #3b2d26;
+  letter-spacing: 0.025em;
+  pointer-events: none;
+}
+
+/* Frame 6: Circular Brushstroke Ring & "Entering the Garden..." */
+.circular-brush-loader-group {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  animation: fadeInUp 0.5s ease forwards;
+  gap: 10px;
+  animation: riseInSmooth 0.55s ease forwards;
 }
 
-.brush-circle-spinner {
-  width: 96px;
-  height: 96px;
+.circular-brush-ring-box {
+  width: 126px;
+  height: 126px;
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: slowSpin 4.5s linear infinite;
 }
 
-@keyframes slowSpin {
+.rotating-enso-group {
+  transform-origin: 76px 78px;
+  animation: ensoSlowRotate 4.2s linear infinite;
+}
+
+@keyframes ensoSlowRotate {
   0% {
     transform: rotate(0deg);
   }
@@ -327,28 +306,28 @@
   }
 }
 
-.entering-garden-text {
+.entering-garden-caption {
   font-family: var(--font-serif);
   font-style: italic;
-  font-size: 1.45rem;
+  font-size: clamp(1.32rem, 1.9vw, 1.62rem);
   font-weight: 500;
   color: #f7ecda;
-  letter-spacing: 0.03em;
-  text-shadow: 0 3px 12px rgba(35, 22, 20, 0.65);
-  animation: gentlePulse 2s ease-in-out infinite;
+  letter-spacing: 0.025em;
+  text-shadow: 0 3px 14px rgba(36, 22, 20, 0.75);
+  animation: captionPulse 2.2s ease-in-out infinite;
 }
 
-@keyframes gentlePulse {
+@keyframes captionPulse {
   0%,
   100% {
-    opacity: 0.82;
+    opacity: 0.84;
   }
   50% {
     opacity: 1;
   }
 }
 
-@keyframes fadeInUp {
+@keyframes riseInSmooth {
   from {
     opacity: 0;
     transform: translateY(12px);

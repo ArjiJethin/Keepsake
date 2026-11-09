@@ -1,45 +1,64 @@
 // src/styles/theme.ts
 
 export const THEME = {
-    // Environment Muted Artistic Low-Poly Palette
     colors: {
-        skyTop: '#8e7b9b',          // Muted lavender dusk sky
-        skyHorizon: '#e8b49a',      // Soft peach sunset horizon
-        fog: '#d8a994',             // Atmospheric warm rosy-peach haze
+        // Sunset Sky & Atmosphere (LoadingScreen.png & Home Screen.jpg)
+        skyZenith: '#7d6d8a',       // Muted dusty mauve-violet zenith
+        skyMid: '#b88c94',          // Dusty rose-mauve mid sky
+        skyHorizon: '#eab89b',      // Warm peach-apricot sunset horizon
+        skyGlow: '#fce0b6',         // Soft cream-gold sun glow
+        fogColor: '#cfa098',        // Warm dusty rose-peach atmospheric haze
 
-        // Terrain & Foliage
-        grassPrimary: '#7d8c65',    // Dusty sage green
-        grassSecondary: '#687852',  // Muted olive
-        grassHighlight: '#96a171',  // Warm sunlit sage
+        // Mountains & Distant Scenery
+        mountainFar: '#9e8191',     // Misty mauve distant peaks
+        mountainMid: '#8a7282',     // Muted plum-grey ridges
+        ruinDistant: '#8f7982',     // Distant archway silhouette
 
-        // Trees & Blossoms
-        trunkBrown: '#6e5243',      // Desaturated warm brown
-        trunkDark: '#523b30',       // Deep bark shadow
-        blossomPink: '#d9918b',     // Dusty rose sakura canopy
-        blossomLight: '#ebb4ab',    // Soft peach-pink petals
-        pineGreen: '#5c704e',       // Muted pine green
+        // Terrain & Meadow Grass
+        meadowBase: '#68744e',      // Muted olive-sage meadow
+        meadowSunlit: '#8b9462',    // Warm sunlit golden-sage slope
+        meadowShadow: '#4a573b',    // Deep olive foreground shadow
+        grassTuft: '#5d6b46',       // Stylized grass blades
+        grassTuftLight: '#7e8a59',  // Sun-kissed grass blades
 
-        // Stone & Architecture
-        stoneBase: '#8c827a',       // Warm grey stone
-        stoneLight: '#a69b91',      // Sunlit warm stone
-        stoneDark: '#6b625b',       // Shadowed stone
+        // Giant Sakura Tree & Foliage
+        barkBase: '#66493a',        // Warm earthy umber trunk
+        barkHighlight: '#855f4b',   // Sunlit left bark edge
+        barkShadow: '#473227',      // Deep bark crevice
+        sakuraDeep: '#c47b78',      // Shaded dusty rose blossom cluster
+        sakuraMid: '#de958f',       // Primary dusty pink blossom cluster
+        sakuraLight: '#f0b3a9',     // Sunlit peach-pink blossom cluster
+        sakuraRim: '#f7cfc4',       // Warm sunset rim-lit blossoms
+        bannerFabric: '#d9b589',    // Warm ochre-parchment hanging banners
+        bannerEmblem: '#a86454',    // Terracotta floral motif on banners
 
-        // Memory Highlight Palette (Vibrant Golden Tones)
-        memoryGold: '#ffcf6b',      // Warm golden glow
-        memoryEmissive: '#ffaa33',  // Rich amber emissive core
-        memoryCore: '#fff3d1',      // Bright warm cream center
+        // Top-Left Framing Canopy & Pine Trees
+        canopyOlive: '#6f784a',     // Warm olive overhanging leaves
+        canopyLight: '#91965c',     // Sunlit olive leaf tips
+        canopyDark: '#4c5737',      // Shaded foliage
 
-        // UI Parchment Palette
-        parchmentBg: '#efe4d2',     // Warm parchment surface
-        parchmentBorder: '#c9b79c', // Soft aged border
-        parchmentText: '#3d312a',   // Deep warm umber ink
-    },
+        // Stone Archway, Pathway & Boulders
+        stoneBase: '#877974',       // Warm taupe-grey stone
+        stoneSunlit: '#ad998e',     // Peach-lit stone face
+        stoneShadow: '#615653',     // Cool mauve-brown stone shadow
+        ivyGreen: '#637048',        // Archway hanging moss & ivy
+        ivyLight: '#818c5b',        // Sunlit ivy
 
-    lighting: {
-        sunPosition: [-35, 18, -45] as [number, number, number],
-        sunColor: '#ffdfb8',
-        ambientColor: '#b89eb8',
-        hemisphereSky: '#e8b49a',
-        hemisphereGround: '#596348',
+        // Wildflowers
+        flowerPetal: '#f5ded2',     // Soft cream-blush petals
+        flowerPetalPink: '#e6a59e', // Dusty rose petals
+        flowerCenter: '#e09f5a',    // Warm amber flower center
+
+        // Memory Objects (Restrained Warm Golden Glow)
+        memoryGold: '#ffcf70',
+        memoryEmissive: '#f5a638',
+        memoryCore: '#fff6de',
+
+        // UI Cream & Parchment
+        creamText: '#f7ecda',
+        parchmentLight: '#efe2cf',
+        parchmentMid: '#dcc7ae',
+        parchmentDark: '#b39b82',
+        inkDark: '#3b2e28',
     },
 } as const;

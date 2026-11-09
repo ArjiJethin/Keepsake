@@ -4,159 +4,90 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { GardenLighting } from '../Lighting/GardenLighting';
-import { THEME } from '../../styles/theme';
+import { GardenEnvironment } from '../Environment/GardenEnvironment';
 import { useGameStore } from '../../store/useGameStore';
 import './GardenScene.css';
 
-const FoundationPreviewIsland: React.FC = () => {
-    const crystalRef = useRef<THREE.Mesh>(null);
-    const ringRef = useRef<THREE.Mesh>(null);
+/**
+ * Choreographs the 3D Camera during the Loading/Intro sequence:
+ * - Stages 1-3 (Opening Canvas & Brushstroke Reveal): Camera gazes slightly upward
+ *   into the misty sunset sky & upper olive canopy (matching LoadingAnimation.png Frames 1-4).
+ * - Stages 4-5 (Intro Screen & Circular Loader): Camera settles smoothly into the
+ *   iconic LoadingScreen.png composition framing the archway, floating waterfall island,
+ *   winding path, and giant sakura tree.
+ */
+const IntroCameraDirector: React.FC = () => {
+    const phase = useGameStore((state) => state.phase);
+    const introStage = useGameStore((state) => state.introStage);
+    const lookAtTarget = useRef(new THREE.Vector3(-0.6, 5.2, -16));
 
     useFrame((state, delta) => {
+        if (phase !== 'loading') return;
+
         const t = state.clock.getElapsedTime();
-        if (crystalRef.current) {
-            crystalRef.current.rotation.y += delta * 0.8;
-            crystalRef.current.position.y = 1.9 + Math.sin(t * 2.2) * 0.12;
-        }
-        if (ringRef.current) {
-            ringRef.current.rotation.z -= delta * 0.5;
-            const scale = 1 + Math.sin(t * 3) * 0.04;
-            ringRef.current.scale.set(scale, scale, scale);
-        }
+        const pointerX = state.pointer.x * 0.28;
+        const pointerY = state.pointer.y * 0.16;
+
+        // Early frames look slightly higher toward the sky canvas; Frame 4+ pans down to the full garden vista
+        const isSkyCanvasFrame = introStage <= 2;
+
+        const desiredPos = new THREE.Vector3(
+            pointerX,
+            isSkyCanvasFrame ? 3.1 : 2.35 + Math.sin(t * 0.45) * 0.04,
+            isSkyCanvasFrame ? 11.4 : 12.2
+        );
+
+        const desiredTarget = new THREE.Vector3(
+            -0.4 + pointerX * 0.6,
+            isSkyCanvasFrame ? 5.6 + pointerY : 2.55 + pointerY,
+            -16
+        );
+
+        state.camera.position.lerp(desiredPos, delta * 1.65);
+        lookAtTarget.current.lerp(desiredTarget, delta * 1.65);
+        state.camera.lookAt(lookAtTarget.current);
     });
 
-    return (
-        <group position={[0, -0.5, 0]}>
-            {/* Faceted Low-Poly Terrain Mound */}
-            <mesh receiveShadow castShadow position={[0, -0.6, 0]}>
-                <cylinderGeometry args={[6.5, 5.2, 1.2, 9]} />
-                <meshStandardMaterial
-                    color={THEME.colors.grassPrimary}
-                    roughness={0.88}
-                    flatShading
-                />
-            </mesh>
-
-            {/* Stylized Stepping Stones */}
-            {[-1.8, -0.4, 1.1, 2.5].map((zPos, idx) => (
-                <mesh
-                    key={idx}
-                    receiveShadow
-                    castShadow
-                    position={[Math.sin(idx) * 0.5, 0.04, zPos]}
-                    rotation={[0, idx * 0.7, 0]}
-                >
-                    <cylinderGeometry args={[0.65, 0.75, 0.14, 7]} />
-                    <meshStandardMaterial
-                        color={THEME.colors.stoneLight}
-                        roughness={0.9}
-                        flatShading
-                    />
-                </mesh>
-            ))}
-
-            {/* Low-Poly Stylized Tree (Right Side Preview) */}
-            <group position={[2.8, 0, -1.5]}>
-                <mesh castShadow receiveShadow position={[0, 1.2, 0]}>
-                    <cylinderGeometry args={[0.25, 0.48, 2.4, 6]} />
-                    <meshStandardMaterial
-                        color={THEME.colors.trunkBrown}
-                        roughness={0.9}
-                        flatShading
-                    />
-                </mesh>
-                <mesh castShadow receiveShadow position={[0, 2.8, 0]}>
-                    <icosahedronGeometry args={[1.45, 1]} />
-                    <meshStandardMaterial
-                        color={THEME.colors.blossomPink}
-                        roughness={0.8}
-                        flatShading
-                    />
-                </mesh>
-                <mesh castShadow receiveShadow position={[-0.9, 2.3, 0.5]}>
-                    <icosahedronGeometry args={[1.0, 1]} />
-                    <meshStandardMaterial
-                        color={THEME.colors.blossomLight}
-                        roughness={0.8}
-                        flatShading
-                    />
-                </mesh>
-                <mesh castShadow receiveShadow position={[0.95, 2.4, -0.4]}>
-                    <icosahedronGeometry args={[1.1, 1]} />
-                    <meshStandardMaterial
-                        color={THEME.colors.blossomPink}
-                        roughness={0.8}
-                        flatShading
-                    />
-                </mesh>
-            </group>
-
-            {/* Low-Poly Stone Pedestal & Glowing Memory Object */}
-            <group position={[-2.2, 0, -0.5]}>
-                <mesh castShadow receiveShadow position={[0, 0.45, 0]}>
-                    <cylinderGeometry args={[0.75, 0.95, 0.9, 7]} />
-                    <meshStandardMaterial
-                        color={THEME.colors.stoneBase}
-                        roughness={0.85}
-                        flatShading
-                    />
-                </mesh>
-
-                <mesh ref={crystalRef} position={[0, 1.9, 0]}>
-                    <octahedronGeometry args={[0.38, 0]} />
-                    <meshStandardMaterial
-                        color={THEME.colors.memoryCore}
-                        emissive={THEME.colors.memoryEmissive}
-                        emissiveIntensity={2.2}
-                        roughness={0.2}
-                        flatShading
-                    />
-                </mesh>
-
-                <mesh ref={ringRef} position={[0, 1.9, 0]}>
-                    <torusGeometry args={[0.68, 0.025, 8, 24]} />
-                    <meshBasicMaterial
-                        color={THEME.colors.memoryGold}
-                        transparent
-                        opacity={0.85}
-                    />
-                </mesh>
-
-                <pointLight
-                    position={[0, 1.8, 0]}
-                    color={THEME.colors.memoryGold}
-                    intensity={2.4}
-                    distance={6}
-                    decay={2}
-                />
-            </group>
-        </group>
-    );
+    return null;
 };
 
 export const GardenScene: React.FC = () => {
     const quality = useGameStore((state) => state.quality);
+    const phase = useGameStore((state) => state.phase);
 
     return (
         <div className="garden-canvas-wrapper">
             <Canvas
                 shadows
-                dpr={quality === 'high' ? [1, 2] : [1, 1]}
-                camera={{ position: [0, 3.5, 8.5], fov: 45, near: 0.1, far: 250 }}
+                dpr={quality === 'high' ? [1, 2] : [1, 1.25]}
+                camera={{
+                    position: [0, 3.1, 11.4],
+                    fov: 42,
+                    near: 0.1,
+                    far: 240,
+                }}
                 gl={{
                     antialias: quality === 'high',
+                    toneMapping: THREE.ACESFilmicToneMapping,
+                    toneMappingExposure: 1.06,
                     powerPreference: 'high-performance',
                 }}
             >
                 <GardenLighting />
-                <FoundationPreviewIsland />
-                <OrbitControls
-                    enablePan={false}
-                    minDistance={4}
-                    maxDistance={18}
-                    maxPolarAngle={Math.PI / 2 - 0.05}
-                    target={[0, 1, 0]}
-                />
+                <GardenEnvironment />
+                <IntroCameraDirector />
+
+                {phase === 'exploring' && (
+                    <OrbitControls
+                        enablePan={false}
+                        enableDamping
+                        dampingFactor={0.05}
+                        minDistance={5}
+                        maxDistance={22}
+                        maxPolarAngle={Math.PI / 2 - 0.04}
+                        target={[-0.4, 2.2, -4]}
+                    />
+                )}
             </Canvas>
         </div>
     );

@@ -1,55 +1,49 @@
 // src/components/LoadingScreen/LoadingScreen.tsx
-import React, { useEffect, useState } from 'react';
-import { useGameStore } from '../../store/useGameStore';
+import React, { useEffect } from 'react';
+import { useGameStore, type IntroStage } from '../../store/useGameStore';
 import './LoadingScreen.css';
-
-/**
- * Stages matching LoadingAnimation.jpg frames:
- * 1: Opening Canvas (Background & garden silhouettes fade in)
- * 2: Brush Begins to Paint / Title Takes Form (Calligraphic stroke + brush animation)
- * 3: Title Complete (Subtitle + botanical divider appear)
- * 4: Interactive Intro Screen ("Enter the Garden" parchment stone button)
- * 5: Entering the Garden (Circular brushstroke loader + "Entering the Garden...")
- * 6: Fade out into interactive 3D Garden
- */
-type IntroStage = 1 | 2 | 3 | 4 | 5 | 6;
 
 export const LoadingScreen: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
     const setPhase = useGameStore((state) => state.setPhase);
-    const [stage, setStage] = useState<IntroStage>(1);
+    const introStage = useGameStore((state) => state.introStage);
+    const setIntroStage = useGameStore((state) => state.setIntroStage);
 
     useEffect(() => {
         if (phase !== 'loading') return;
 
-        setStage(1);
+        setIntroStage(1);
 
-        // Frame 1 -> Frame 2/3: Start painting "Keepsake" title
-        const t1 = setTimeout(() => setStage(2), 700);
-        // Frame 3 -> Frame 4: Reveal subtitle & botanical divider
-        const t2 = setTimeout(() => setStage(3), 2700);
-        // Frame 4 -> Frame 5: Reveal interactive "Enter the Garden" button
-        const t3 = setTimeout(() => setStage(4), 3600);
+        // Stage 1 -> Stage 2: Brush begins painting "Keepsake" across the sky canvas
+        const t1 = setTimeout(() => setIntroStage(2), 650);
+        // Stage 2 -> Stage 3: Title complete, reveal subtitle & botanical leaf divider
+        const t2 = setTimeout(() => setIntroStage(3), 3100);
+        // Stage 3 -> Stage 4: Camera settles & interactive stone "Enter the Garden" button appears
+        const t3 = setTimeout(() => setIntroStage(4), 4000);
 
         return () => {
             clearTimeout(t1);
             clearTimeout(t2);
             clearTimeout(t3);
         };
-    }, [phase]);
+    }, [phase, setIntroStage]);
 
-    // Triggered when user clicks "Enter the Garden" (Frame 5 -> Frame 6 -> Exploring)
     const handleEnterGarden = () => {
-        if (stage >= 5) return;
-        setStage(5); // Show circular brushstroke loader + "Entering the Garden..."
+        if (introStage >= 5) return;
+        setIntroStage(5 as IntroStage); // Frame 6: Circular brushstroke ring + "Entering the Garden..."
 
-        setTimeout(() => {
-            setStage(6); // Smooth fade-out curtain
-        }, 2200);
+        const tFade = setTimeout(() => {
+            setIntroStage(6 as IntroStage);
+        }, 2400);
 
-        setTimeout(() => {
+        const tExplore = setTimeout(() => {
             setPhase('exploring');
-        }, 3100);
+        }, 3200);
+
+        return () => {
+            clearTimeout(tFade);
+            clearTimeout(tExplore);
+        };
     };
 
     if (phase === 'exploring') {
@@ -58,416 +52,365 @@ export const LoadingScreen: React.FC = () => {
 
     return (
         <div
-            className={`loading-screen-overlay ${stage === 6 ? 'loading-screen-overlay--fade-out' : ''
+            className={`keepsake-loading-overlay ${introStage === 6 ? 'keepsake-loading-overlay--fade-out' : ''
                 }`}
         >
-            {/* LAYER 1: Atmospheric Low-Poly Illustrated Garden Backdrop (Matches LoadingScreen.jpg) */}
-            <div className={`loading-backdrop ${stage >= 1 ? 'visible' : ''}`}>
-                {/* Warm Sunset Glow & Distant Sun */}
-                <div className="loading-sun" />
+            {/* Subtle painterly warm radial atmosphere over the live 3D garden */}
+            <div
+                className={`loading-atmosphere-veil ${introStage <= 2 ? 'loading-atmosphere-veil--misty' : ''
+                    }`}
+            />
 
-                {/* SVG Low-Poly Scenic Composition: Archway, Floating Island Waterfall, Hills, Sakura Tree */}
-                <svg
-                    className="loading-scenery-svg"
-                    viewBox="0 0 1920 1080"
-                    preserveAspectRatio="xMidYMid slice"
-                    xmlns="http://www.w3.org/2000/svg"
+            {/* Main Centered Composition matching LoadingScreen.png */}
+            <div className="loading-content-frame">
+                {/* Calligraphic Logo, Brush Animation, Subtitle & Botanical Divider */}
+                <div
+                    className={`brand-header-group ${introStage >= 2 ? 'brand-header-group--visible' : ''
+                        }`}
                 >
-                    <defs>
-                        <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="#897896" />
-                            <stop offset="45%" stopColor="#c79797" />
-                            <stop offset="80%" stopColor="#e8b89b" />
-                            <stop offset="100%" stopColor="#f2cfa9" />
-                        </linearGradient>
-
-                        <linearGradient id="distantHill" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="#9e8596" />
-                            <stop offset="100%" stopColor="#c29c94" />
-                        </linearGradient>
-
-                        <linearGradient id="midMeadow" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="#8c966e" />
-                            <stop offset="100%" stopColor="#5e6b4c" />
-                        </linearGradient>
-
-                        <linearGradient id="foreMeadow" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="#77855c" />
-                            <stop offset="100%" stopColor="#465239" />
-                        </linearGradient>
-
-                        <linearGradient id="waterfallGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" stopColor="#fff7eb" stopOpacity="0.85" />
-                            <stop offset="100%" stopColor="#e8b89b" stopOpacity="0.1" />
-                        </linearGradient>
-
-                        {/* Animated clip-path for calligraphic title reveal */}
-                        <clipPath id="titleBrushClip">
-                            <rect
-                                className={`brush-clip-rect ${stage >= 2 ? 'animate-reveal' : ''}`}
-                                x="0"
-                                y="0"
-                                width="0"
-                                height="300"
-                            />
-                        </clipPath>
-                    </defs>
-
-                    {/* Sky Base */}
-                    <rect width="1920" height="1080" fill="url(#skyGrad)" />
-
-                    {/* Soft Low-Poly Clouds */}
-                    <g fill="#f5d5be" opacity="0.45">
-                        <polygon points="180,250 290,220 420,245 360,275 210,270" />
-                        <polygon points="480,290 610,265 730,290 640,310 510,308" />
-                        <polygon points="1180,230 1340,195 1480,225 1390,255 1220,250" />
-                    </g>
-
-                    {/* Setting Sun Disc */}
-                    <circle cx="525" cy="590" r="52" fill="#ffebc2" opacity="0.85" />
-
-                    {/* Distant Floating Island & Waterfall (Center-Left Background) */}
-                    <g className="floating-island-group">
-                        <polygon
-                            points="530,565 640,555 745,568 705,625 635,665 575,615"
-                            fill="#9c868e"
-                        />
-                        <polygon
-                            points="525,560 640,545 750,562 690,575 570,572"
-                            fill="#889173"
-                        />
-                        {/* Waterfall stream */}
-                        <rect
-                            x="655"
-                            y="568"
-                            width="20"
-                            height="195"
-                            fill="url(#waterfallGrad)"
-                        />
-                    </g>
-
-                    {/* Distant Mountain Range */}
-                    <polygon
-                        points="0,680 180,590 390,650 580,620 820,690 1080,610 1350,560 1620,620 1920,580 1920,850 0,850"
-                        fill="url(#distantHill)"
-                        opacity="0.75"
-                    />
-
-                    {/* Distant Ruin Silhouette on Right Hill */}
-                    <g fill="#8f7c84" opacity="0.7">
-                        <rect x="1305" y="595" width="14" height="55" />
-                        <rect x="1335" y="585" width="14" height="65" />
-                        <polygon points="1298,595 1325,578 1355,588 1348,600" />
-                    </g>
-
-                    {/* Midground Rolling Hills */}
-                    <polygon
-                        points="0,710 340,685 740,745 1190,715 1620,635 1920,660 1920,1080 0,1080"
-                        fill="url(#midMeadow)"
-                    />
-
-                    {/* Foreground Sloping Garden Meadow */}
-                    <polygon
-                        points="0,740 480,785 950,825 1460,770 1920,720 1920,1080 0,1080"
-                        fill="url(#foreMeadow)"
-                    />
-
-                    {/* Winding Low-Poly Stone Pathway */}
-                    <g fill="#9e9087" opacity="0.92">
-                        <polygon points="410,775 495,770 515,786 430,792" />
-                        <polygon points="525,802 620,795 645,814 545,822" />
-                        <polygon points="650,835 760,828 790,852 670,860" />
-                        <polygon points="780,875 910,865 945,895 805,908" />
-                        <polygon points="885,925 1045,912 1085,952 915,968" />
-                        <polygon points="940,990 1135,975 1185,1025 975,1045" />
-                        <polygon points="830,1045 1020,1030 1065,1078 855,1080" />
-                    </g>
-
-                    {/* Left Stone Archway Ruin */}
-                    <g className="stone-archway-group">
-                        {/* Left Pillar */}
-                        <polygon points="85,360 175,345 185,730 75,735" fill="#7c706b" />
-                        <polygon points="175,345 215,360 215,725 185,730" fill="#9a8b82" />
-                        {/* Right Pillar */}
-                        <polygon points="315,380 375,370 385,735 310,740" fill="#7c706b" />
-                        <polygon points="375,370 408,385 408,730 385,735" fill="#9a8b82" />
-                        {/* Arch Top */}
-                        <polygon
-                            points="65,360 190,285 335,305 420,385 365,415 295,355 215,350 155,410"
-                            fill="#877a73"
-                        />
-                        {/* Hanging Ivy Accents */}
-                        <polygon points="150,340 195,350 175,445 140,410" fill="#5e6e49" />
-                        <polygon points="320,350 370,365 355,460 330,420" fill="#687a52" />
-                    </g>
-
-                    {/* Right Giant Low-Poly Sakura Tree & Hanging Banners */}
-                    <g className="sakura-tree-group">
-                        {/* Hanging Prayer Banners */}
-                        <g>
-                            <polygon points="1540,260 1605,272 1598,425 1532,410" fill="#d9b693" opacity="0.88" />
-                            <circle cx="1568" cy="345" r="14" fill="#b88467" opacity="0.6" />
-                            <polygon points="1655,295 1712,305 1705,435 1648,422" fill="#cfa986" opacity="0.82" />
-                            <circle cx="1680" cy="368" r="11" fill="#b88467" opacity="0.6" />
-                        </g>
-
-                        {/* Tree Trunk & Branches */}
-                        <polygon
-                            points="1575,920 1785,220 1920,240 1920,960 1540,950"
-                            fill="#634637"
-                        />
-                        <polygon
-                            points="1685,890 1795,340 1875,360 1790,920"
-                            fill="#7d5846"
-                        />
-                        <polygon
-                            points="1760,310 1230,55 1295,35 1790,260"
-                            fill="#593e30"
-                        />
-                        <polygon
-                            points="1740,240 1460,180 1490,155 1765,210"
-                            fill="#6e4d3d"
-                        />
-
-                        {/* Low-Poly Sakura Blossom Canopy Clusters */}
-                        <polygon
-                            points="995,0 1350,0 1480,95 1310,165 1060,110"
-                            fill="#d9928c"
-                        />
-                        <polygon
-                            points="1260,40 1680,0 1820,120 1610,215 1350,150"
-                            fill="#e6a69e"
-                        />
-                        <polygon
-                            points="1520,0 1920,0 1920,265 1710,240 1540,130"
-                            fill="#c77d78"
-                        />
-                        <polygon
-                            points="1350,145 1590,135 1665,225 1475,265 1345,215"
-                            fill="#edb8b0"
-                        />
-                    </g>
-
-                    {/* Top-Left Olive Foliage Framing */}
-                    <g fill="#5b6944">
-                        <polygon points="0,0 580,0 490,95 280,145 95,185 0,220" />
-                        <polygon points="120,0 640,0 570,115 390,140 190,85" fill="#748256" />
-                    </g>
-
-                    {/* Foreground Low-Poly Boulders (Bottom Left & Right) */}
-                    <polygon
-                        points="0,680 145,670 235,775 215,910 0,920"
-                        fill="#7d7068"
-                    />
-                    <polygon
-                        points="145,670 235,775 165,840 55,765"
-                        fill="#9e8e84"
-                    />
-                    <polygon
-                        points="180,825 385,785 480,895 450,1080 120,1080"
-                        fill="#695e58"
-                    />
-                    <polygon
-                        points="235,795 385,785 455,875 310,895"
-                        fill="#8f8177"
-                    />
-                    <polygon
-                        points="1330,835 1460,785 1540,855 1495,915 1315,905"
-                        fill="#857770"
-                    />
-                    <polygon
-                        points="1420,910 1660,855 1860,975 1820,1080 1360,1080"
-                        fill="#736660"
-                    />
-                    <polygon
-                        points="1490,865 1660,855 1785,945 1580,965"
-                        fill="#998980"
-                    />
-                </svg>
-
-                {/* Floating Blossom Petals */}
-                <div className="petal-container">
-                    {Array.from({ length: 14 }).map((_, idx) => (
-                        <span
-                            key={idx}
-                            className={`floating-petal petal-${(idx % 5) + 1}`}
-                            style={{
-                                left: `${(idx * 7.5) % 100}%`,
-                                animationDelay: `${idx * 0.6}s`,
-                                animationDuration: `${7 + (idx % 4) * 2}s`,
-                            }}
-                        />
-                    ))}
-                </div>
-            </div>
-
-            {/* LAYER 2: Center Brand & Interactive Sequence */}
-            <div className="loading-center-content">
-                {/* Frames 2, 3, 4: Calligraphic Brushstroke Title Reveal */}
-                <div className={`logo-reveal-container ${stage >= 2 ? 'active' : ''}`}>
-                    <div className="logo-brush-wrapper">
-                        <h1 className="keepsake-main-logo">
-                            Keepsake
-                            {/* Subtle leaf motif on top right of logo matching reference */}
-                            <svg
-                                className="logo-leaf-accent"
-                                viewBox="0 0 48 48"
-                                width="38"
-                                height="38"
-                            >
-                                <path
-                                    d="M8,38 C16,20 28,12 42,8 C38,22 30,34 12,40 Z"
-                                    fill="#f5ead8"
-                                />
-                                <path
-                                    d="M26,28 C32,22 38,18 44,18 C40,26 34,30 26,28 Z"
-                                    fill="#ebd8be"
-                                />
-                            </svg>
-                        </h1>
-
-                        {/* Decorative Paint Underline Flourish */}
+                    <div className="logo-svg-stage">
                         <svg
-                            className="logo-underline-svg"
-                            viewBox="0 0 400 32"
-                            fill="none"
+                            className="keepsake-logo-svg"
+                            viewBox="0 0 920 250"
+                            preserveAspectRatio="xMidYMid meet"
+                            xmlns="http://www.w3.org/2000/svg"
                         >
-                            <path
-                                className="logo-underline-path"
-                                d="M35,18 Q195,30 355,10"
-                                stroke="#f5ead8"
-                                strokeWidth="3.5"
-                                strokeLinecap="round"
-                            />
+                            <defs>
+                                {/* Progressive Horizontal Brush Reveal Mask */}
+                                <mask id="calligraphyBrushMask">
+                                    <path
+                                        className={`mask-reveal-stroke ${introStage >= 2 ? 'mask-reveal-stroke--active' : ''
+                                            }`}
+                                        d="M 60,125 L 860,125"
+                                        stroke="#ffffff"
+                                        strokeWidth="260"
+                                        strokeLinecap="round"
+                                        fill="none"
+                                    />
+                                </mask>
+
+                                {/* Soft Warm Drop Shadow for Cream Calligraphy */}
+                                <filter
+                                    id="logoSoftShadow"
+                                    x="-15%"
+                                    y="-15%"
+                                    width="130%"
+                                    height="130%"
+                                >
+                                    <feDropShadow
+                                        dx="0"
+                                        dy="4"
+                                        stdDeviation="6"
+                                        floodColor="#3b2422"
+                                        floodOpacity="0.45"
+                                    />
+                                </filter>
+                            </defs>
+
+                            {/* Masked Calligraphic Wordmark & Leaf Motif */}
+                            <g mask="url(#calligraphyBrushMask)" filter="url(#logoSoftShadow)">
+                                {/* Hand-lettered "Keepsake" in Cream Ink */}
+                                <text
+                                    x="452"
+                                    y="152"
+                                    textAnchor="middle"
+                                    className="keepsake-svg-wordmark"
+                                >
+                                    Keepsake
+                                </text>
+
+                                {/* Sweeping Calligraphic Underline Flourish (From K stem under eepsake) */}
+                                <path
+                                    className={`keepsake-underline-flourish ${introStage >= 2 ? 'keepsake-underline-flourish--active' : ''
+                                        }`}
+                                    d="M 218,136 C 285,198 375,212 492,188 C 565,173 638,168 690,182"
+                                    fill="none"
+                                    stroke="#f7ecda"
+                                    strokeWidth="5.5"
+                                    strokeLinecap="round"
+                                />
+                                {/* Secondary tapered inner stroke for authentic bristle thickness */}
+                                <path
+                                    d="M 245,155 C 310,202 385,208 492,186 C 555,174 615,170 665,178"
+                                    fill="none"
+                                    stroke="#f7ecda"
+                                    strokeWidth="2.5"
+                                    strokeLinecap="round"
+                                    opacity="0.85"
+                                />
+
+                                {/* Signature Two-Leaf Accent at Top-Right of 'e' (Matches LoadingScreen.png) */}
+                                <g transform="translate(715, 58) rotate(-8)">
+                                    {/* Stem */}
+                                    <path
+                                        d="M -6,28 Q 8,14 26,-2"
+                                        stroke="#f7ecda"
+                                        strokeWidth="2.6"
+                                        strokeLinecap="round"
+                                        fill="none"
+                                    />
+                                    {/* Upper main leaf */}
+                                    <path
+                                        d="M 6,16 C 10,-2 28,-12 46,-14 C 40,6 26,20 6,16 Z"
+                                        fill="#f7ecda"
+                                    />
+                                    {/* Small side leaf */}
+                                    <path
+                                        d="M -4,20 C -10,8 -4,-4 8,-8 C 8,4 4,14 -4,20 Z"
+                                        fill="#f2dfc4"
+                                    />
+                                </g>
+                            </g>
                         </svg>
 
-                        {/* Animated Paintbrush Tip (Visible during Stage 2 painting) */}
-                        {stage === 2 && (
-                            <div className="animated-paintbrush" aria-hidden="true">
-                                <svg viewBox="0 0 120 40" width="110" height="36">
-                                    {/* Brush handle */}
+                        {/* Artist Paintbrush Following the Calligraphic Stroke (Stage 2) */}
+                        {introStage === 2 && (
+                            <div className="artist-paintbrush-follower" aria-hidden="true">
+                                <svg viewBox="0 0 220 70" width="195" height="62">
+                                    <defs>
+                                        <linearGradient
+                                            id="woodHandle"
+                                            x1="0%"
+                                            y1="0%"
+                                            x2="100%"
+                                            y2="0%"
+                                        >
+                                            <stop offset="0%" stopColor="#9e643c" />
+                                            <stop offset="50%" stopColor="#b87b4f" />
+                                            <stop offset="100%" stopColor="#784726" />
+                                        </linearGradient>
+                                        <linearGradient
+                                            id="brassFerrule"
+                                            x1="0%"
+                                            y1="0%"
+                                            x2="0%"
+                                            y2="100%"
+                                        >
+                                            <stop offset="0%" stopColor="#f5dfa6" />
+                                            <stop offset="50%" stopColor="#c9a563" />
+                                            <stop offset="100%" stopColor="#8c6c38" />
+                                        </linearGradient>
+                                    </defs>
+                                    {/* Wooden Handle */}
                                     <path
-                                        d="M35,16 L115,4 L118,12 L38,24 Z"
-                                        fill="#8c583a"
+                                        d="M 78,28 L 216,2 L 220,15 L 82,40 Z"
+                                        fill="url(#woodHandle)"
                                     />
-                                    {/* Metal ferrule */}
+                                    {/* Brass Ferrule */}
                                     <path
-                                        d="M22,18 L36,15 L39,24 L25,27 Z"
-                                        fill="#d4b483"
+                                        d="M 48,33 L 79,27 L 83,41 L 52,46 Z"
+                                        fill="url(#brassFerrule)"
                                     />
-                                    {/* Bristles */}
+                                    {/* Dark Sabre Bristles */}
                                     <path
-                                        d="M2,26 C8,18 16,17 23,18 L25,27 C17,29 9,29 2,26 Z"
-                                        fill="#4a3730"
+                                        d="M 4,44 C 18,30 34,31 49,33 L 52,46 C 35,51 18,50 4,44 Z"
+                                        fill="#4c3832"
+                                    />
+                                    {/* Cream Paint Tip on Bristles */}
+                                    <path
+                                        d="M 4,44 C 11,38 19,38 25,40 C 19,46 11,47 4,44 Z"
+                                        fill="#f7ecda"
                                     />
                                 </svg>
                             </div>
                         )}
                     </div>
 
-                    {/* Frame 4: Subtitle & Botanical Divider */}
-                    <div className={`subtitle-block ${stage >= 3 ? 'visible' : ''}`}>
-                        <p className="keepsake-subtitle">
-                            A WORLD PAINTED FROM MEMORIES.
+                    {/* Subtitle & Botanical Leaf-Sprig Divider (Stage 3+) */}
+                    <div
+                        className={`subtitle-ornament-group ${introStage >= 3 ? 'subtitle-ornament-group--visible' : ''
+                            }`}
+                    >
+                        <p className="keepsake-spaced-subtitle">
+                            A WORLD PAINTED FROM MEMORIES
                         </p>
-                        <div className="botanical-divider">
-                            <span className="divider-line" />
+
+                        <div className="botanical-divider-row">
+                            <span className="ornament-line" />
                             <svg
-                                className="divider-sprig"
-                                viewBox="0 0 80 24"
-                                width="64"
-                                height="20"
+                                className="ornament-sprig-svg"
+                                viewBox="0 0 90 28"
+                                width="68"
+                                height="22"
                             >
                                 <path
-                                    d="M10,14 Q40,10 70,12"
-                                    stroke="#f3e5d0"
-                                    strokeWidth="1.5"
+                                    d="M 14,16 Q 45,12 76,13"
+                                    stroke="#f7ecda"
+                                    strokeWidth="1.6"
                                     fill="none"
+                                    strokeLinecap="round"
                                 />
-                                <ellipse
-                                    cx="30"
-                                    cy="9"
-                                    rx="6"
-                                    ry="3"
-                                    transform="rotate(-20 30 9)"
-                                    fill="#f3e5d0"
+                                <path
+                                    d="M 30,14 C 24,7 16,6 12,10 C 17,15 24,16 30,14 Z"
+                                    fill="#f7ecda"
                                 />
-                                <ellipse
-                                    cx="45"
-                                    cy="8"
-                                    rx="6"
-                                    ry="3"
-                                    transform="rotate(-15 45 8)"
-                                    fill="#f3e5d0"
+                                <path
+                                    d="M 46,13 C 42,5 35,3 29,6 C 33,12 40,14 46,13 Z"
+                                    fill="#f7ecda"
                                 />
-                                <ellipse
-                                    cx="36"
-                                    cy="16"
-                                    rx="6"
-                                    ry="3"
-                                    transform="rotate(20 36 16)"
-                                    fill="#f3e5d0"
+                                <path
+                                    d="M 42,15 C 38,22 30,24 24,20 C 29,16 36,14 42,15 Z"
+                                    fill="#f7ecda"
                                 />
-                                <ellipse
-                                    cx="52"
-                                    cy="15"
-                                    rx="5"
-                                    ry="2.5"
-                                    transform="rotate(15 52 15)"
-                                    fill="#f3e5d0"
+                                <path
+                                    d="M 60,13 C 64,6 72,5 78,9 C 72,14 65,15 60,13 Z"
+                                    fill="#f7ecda"
+                                />
+                                <path
+                                    d="M 56,14 C 60,20 67,22 73,19 C 68,15 62,14 56,14 Z"
+                                    fill="#f7ecda"
                                 />
                             </svg>
-                            <span className="divider-line" />
+                            <span className="ornament-line" />
                         </div>
                     </div>
                 </div>
 
-                {/* Frame 5 & 6: Interactive Action / Circular Loading Indicator */}
-                <div className="loading-action-area">
-                    {stage === 4 && (
+                {/* Lower Interactive Slot: Frame 5 Stone Button OR Frame 6 Circular Brush Loader */}
+                <div className="loading-lower-slot">
+                    {introStage === 4 && (
                         <button
-                            className="enter-garden-btn"
+                            type="button"
+                            className="sculpted-stone-enter-btn"
                             onClick={handleEnterGarden}
-                            aria-label="Enter the Garden"
                         >
-                            <span className="enter-garden-btn__inner">Enter the Garden</span>
+                            <svg
+                                className="stone-btn-svg"
+                                viewBox="0 0 340 86"
+                                width="310"
+                                height="78"
+                            >
+                                <defs>
+                                    <linearGradient
+                                        id="stoneRimGrad"
+                                        x1="0%"
+                                        y1="0%"
+                                        x2="0%"
+                                        y2="100%"
+                                    >
+                                        <stop offset="0%" stopColor="#d9c0a6" />
+                                        <stop offset="55%" stopColor="#b3967d" />
+                                        <stop offset="100%" stopColor="#856d5c" />
+                                    </linearGradient>
+                                    <linearGradient
+                                        id="parchmentFaceGrad"
+                                        x1="0%"
+                                        y1="0%"
+                                        x2="0%"
+                                        y2="100%"
+                                    >
+                                        <stop offset="0%" stopColor="#f3e5d2" />
+                                        <stop offset="100%" stopColor="#dfc8ae" />
+                                    </linearGradient>
+                                </defs>
+                                {/* Faceted Low-Poly Carved Stone Outer Tablet */}
+                                <polygon
+                                    points="28,8 95,4 245,4 312,8 334,26 336,58 310,78 240,82 100,82 26,78 4,58 6,26"
+                                    fill="url(#stoneRimGrad)"
+                                    stroke="#f7e8d4"
+                                    strokeWidth="1"
+                                    strokeOpacity="0.6"
+                                />
+                                {/* Faceted Stone Bevel Chips */}
+                                <polygon
+                                    points="26,78 100,82 92,72 34,69"
+                                    fill="#6e5849"
+                                    opacity="0.65"
+                                />
+                                <polygon
+                                    points="240,82 310,78 302,69 248,72"
+                                    fill="#6e5849"
+                                    opacity="0.65"
+                                />
+                                {/* Inner Warm Parchment Face */}
+                                <polygon
+                                    points="34,15 100,12 240,12 306,15 324,29 325,54 304,69 238,72 102,72 34,69 15,54 16,29"
+                                    fill="url(#parchmentFaceGrad)"
+                                />
+                            </svg>
+                            <span className="stone-btn-label">Enter the Garden</span>
                         </button>
                     )}
 
-                    {stage >= 5 && (
-                        <div className="entering-loader-wrapper">
-                            {/* Painted Circular Brushstroke Ring with Leaf Accent */}
-                            <div className="brush-circle-spinner">
-                                <svg viewBox="0 0 120 120" width="96" height="96">
+                    {introStage >= 5 && (
+                        <div className="circular-brush-loader-group">
+                            <div className="circular-brush-ring-box">
+                                <svg
+                                    className="circular-brush-svg"
+                                    viewBox="0 0 160 160"
+                                    width="126"
+                                    height="126"
+                                >
                                     <defs>
-                                        <filter id="warmGlow">
-                                            <feGaussianBlur stdDeviation="2.5" result="blur" />
+                                        <linearGradient
+                                            id="ringWarmGlow"
+                                            x1="0%"
+                                            y1="0%"
+                                            x2="100%"
+                                            y2="100%"
+                                        >
+                                            <stop offset="0%" stopColor="#fff9eb" stopOpacity="0.95" />
+                                            <stop offset="65%" stopColor="#ffe3b3" stopOpacity="0.9" />
+                                            <stop offset="100%" stopColor="#ffbe6b" stopOpacity="0.2" />
+                                        </linearGradient>
+                                        <filter
+                                            id="ringBloom"
+                                            x="-25%"
+                                            y="-25%"
+                                            width="150%"
+                                            height="150%"
+                                        >
+                                            <feGaussianBlur stdDeviation="3.5" result="blur" />
                                             <feMerge>
                                                 <feMergeNode in="blur" />
                                                 <feMergeNode in="SourceGraphic" />
                                             </feMerge>
                                         </filter>
                                     </defs>
-                                    <circle
-                                        className="brush-ring-path"
-                                        cx="60"
-                                        cy="60"
-                                        r="44"
-                                        fill="none"
-                                        stroke="#fff3db"
-                                        strokeWidth="5"
-                                        strokeLinecap="round"
-                                        strokeDasharray="235 60"
-                                        filter="url(#warmGlow)"
-                                    />
-                                    {/* Small leaf buds on the right side of the ring matching LoadingScreen.jpg */}
-                                    <g fill="#fff3db" transform="translate(96, 62) rotate(-25)">
-                                        <ellipse cx="0" cy="0" rx="6" ry="2.8" />
-                                        <ellipse cx="6" cy="5" rx="5" ry="2.4" transform="rotate(35)" />
+
+                                    {/* Rotating Hand-Painted Enso Brushstroke Ring */}
+                                    <g className="rotating-enso-group" filter="url(#ringBloom)">
+                                        {/* Main tapered brushstroke arc */}
+                                        <path
+                                            d="M 126,64 C 118,32 84,18 52,29 C 24,39 14,72 26,102 C 38,130 74,142 104,126 C 118,118 127,104 130,90"
+                                            fill="none"
+                                            stroke="url(#ringWarmGlow)"
+                                            strokeWidth="5.2"
+                                            strokeLinecap="round"
+                                        />
+                                        {/* Secondary fine bristle feathering arc */}
+                                        <path
+                                            d="M 122,52 C 108,28 76,20 48,34 C 24,46 18,78 32,106 C 46,132 82,138 110,118"
+                                            fill="none"
+                                            stroke="#fff6e3"
+                                            strokeWidth="2.1"
+                                            strokeLinecap="round"
+                                            strokeDasharray="140 35"
+                                            opacity="0.8"
+                                        />
+                                        {/* Warm Golden Highlight Arc at Bottom-Right (Matches LoadingScreen.png) */}
+                                        <path
+                                            d="M 66,133 C 88,136 112,124 124,102"
+                                            fill="none"
+                                            stroke="#ffe4a8"
+                                            strokeWidth="6.5"
+                                            strokeLinecap="round"
+                                        />
+                                    </g>
+
+                                    {/* Delicate Botanical Leaf Buds on Right Edge of Ring */}
+                                    <g
+                                        fill="#fff4de"
+                                        filter="url(#ringBloom)"
+                                        transform="translate(128, 86) rotate(-18)"
+                                    >
+                                        <path d="M 0,0 C 4,-8 12,-11 18,-9 C 14,-2 7,2 0,0 Z" />
+                                        <path d="M -2,6 C -7,0 -7,-8 -2,-13 C 2,-7 2,0 -2,6 Z" />
                                     </g>
                                 </svg>
                             </div>
-                            <p className="entering-garden-text">Entering the Garden...</p>
+
+                            <p className="entering-garden-caption">Entering the Garden...</p>
                         </div>
                     )}
                 </div>

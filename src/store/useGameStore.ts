@@ -3,12 +3,16 @@ import { create } from 'zustand';
 import type { MemoryItem } from '../systems/MemoryManager/memoryTypes';
 
 export type AppPhase = 'loading' | 'intro' | 'exploring';
+export type IntroStage = 1 | 2 | 3 | 4 | 5 | 6;
 export type QualityPreset = 'high' | 'low';
 export type ActiveModal = 'none' | 'memory' | 'journal' | 'friends' | 'settings' | 'createMemory';
 
 interface GameState {
     phase: AppPhase;
     setPhase: (phase: AppPhase) => void;
+
+    introStage: IntroStage;
+    setIntroStage: (stage: IntroStage) => void;
 
     quality: QualityPreset;
     toggleQuality: () => void;
@@ -28,9 +32,11 @@ interface GameState {
 }
 
 export const useGameStore = create<GameState>((set) => ({
-    // Starts at 'loading' so the Phase 2 animated intro sequence plays on launch
     phase: 'loading',
     setPhase: (phase) => set({ phase }),
+
+    introStage: 1,
+    setIntroStage: (introStage) => set({ introStage }),
 
     quality: 'high',
     toggleQuality: () =>
