@@ -1,20 +1,17 @@
 // src/scenes/GardenScene/GardenScene.tsx
 import React, { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { GardenLighting } from '../Lighting/GardenLighting';
 import { GardenEnvironment } from '../Environment/GardenEnvironment';
+import { PlayerCharacter } from '../../components/Character/PlayerCharacter';
+import { ThirdPersonCamera } from '../../components/Camera/ThirdPersonCamera';
 import { useGameStore } from '../../store/useGameStore';
 import './GardenScene.css';
 
 /**
- * Choreographs the 3D Camera during the Loading/Intro sequence:
- * - Stages 1-3 (Opening Canvas & Brushstroke Reveal): Camera gazes slightly upward
- *   into the misty sunset sky & upper olive canopy (matching LoadingAnimation.png Frames 1-4).
- * - Stages 4-5 (Intro Screen & Circular Loader): Camera settles smoothly into the
- *   iconic LoadingScreen.png composition framing the archway, floating waterfall island,
- *   winding path, and giant sakura tree.
+ * Choreographs the 3D Camera during the Loading/Intro sequence before handing
+ * control seamlessly to the ThirdPersonCamera upon entering the garden.
  */
 const IntroCameraDirector: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
@@ -25,21 +22,20 @@ const IntroCameraDirector: React.FC = () => {
         if (phase !== 'loading') return;
 
         const t = state.clock.getElapsedTime();
-        const pointerX = state.pointer.x * 0.28;
-        const pointerY = state.pointer.y * 0.16;
+        const pointerX = state.pointer.x * 0.25;
+        const pointerY = state.pointer.y * 0.14;
 
-        // Early frames look slightly higher toward the sky canvas; Frame 4+ pans down to the full garden vista
         const isSkyCanvasFrame = introStage <= 2;
 
         const desiredPos = new THREE.Vector3(
             pointerX,
-            isSkyCanvasFrame ? 3.1 : 2.35 + Math.sin(t * 0.45) * 0.04,
+            isSkyCanvasFrame ? 3.05 : 2.35 + Math.sin(t * 0.45) * 0.04,
             isSkyCanvasFrame ? 11.4 : 12.2
         );
 
         const desiredTarget = new THREE.Vector3(
             -0.4 + pointerX * 0.6,
-            isSkyCanvasFrame ? 5.6 + pointerY : 2.55 + pointerY,
+            isSkyCanvasFrame ? 5.2 + pointerY : 2.5 + pointerY,
             -16
         );
 
@@ -53,7 +49,6 @@ const IntroCameraDirector: React.FC = () => {
 
 export const GardenScene: React.FC = () => {
     const quality = useGameStore((state) => state.quality);
-    const phase = useGameStore((state) => state.phase);
 
     return (
         <div className="garden-canvas-wrapper">
@@ -61,10 +56,10 @@ export const GardenScene: React.FC = () => {
                 shadows
                 dpr={quality === 'high' ? [1, 2] : [1, 1.25]}
                 camera={{
-                    position: [0, 3.1, 11.4],
+                    position: [0, 3.05, 11.4],
                     fov: 42,
                     near: 0.1,
-                    far: 240,
+                    far: 260,
                 }}
                 gl={{
                     antialias: quality === 'high',
@@ -75,19 +70,9 @@ export const GardenScene: React.FC = () => {
             >
                 <GardenLighting />
                 <GardenEnvironment />
+                <PlayerCharacter />
                 <IntroCameraDirector />
-
-                {phase === 'exploring' && (
-                    <OrbitControls
-                        enablePan={false}
-                        enableDamping
-                        dampingFactor={0.05}
-                        minDistance={5}
-                        maxDistance={22}
-                        maxPolarAngle={Math.PI / 2 - 0.04}
-                        target={[-0.4, 2.2, -4]}
-                    />
-                )}
+                <ThirdPersonCamera />
             </Canvas>
         </div>
     );
