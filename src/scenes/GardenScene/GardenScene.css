@@ -1,0 +1,21 @@
+/* src/scenes/GardenScene/GardenScene.css */
+
+.garden-canvas-wrapper {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: linear-gradient(180deg, #8e7b9b 0%, #d8a994 60%, #e8b49a 100%);
+}
+
+.garden-canvas-wrapper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at center,
+    transparent 62%,
+    rgba(45, 31, 38, 0.32) 100%
+  );
+}

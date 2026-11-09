@@ -1,0 +1,93 @@
+/* src/styles/global.css */
+
+:root {
+  --font-logo: 'Alex Brush', cursive;
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --color-parchment: #efe4d2;
+  --color-parchment-light: #f7f0e4;
+  --color-parchment-border: #c8b598;
+  --color-ink: #3d312a;
+  --color-ink-muted: #6e5d52;
+  --color-gold-glow: rgba(255, 207, 107, 0.65);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html,
+body,
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #2b2329;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Foundation debug overlay for Phase 1 verification */
+.phase1-status-badge {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 20;
+  background: rgba(239, 228, 210, 0.92);
+  border: 1.5px solid var(--color-parchment-border);
+  border-radius: 14px;
+  padding: 14px 20px;
+  box-shadow: 0 8px 24px rgba(34, 24, 18, 0.25);
+  backdrop-filter: blur(6px);
+  max-width: 360px;
+}
+
+.phase1-status-badge h2 {
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 4px;
+}
+
+.phase1-status-badge p {
+  font-size: 0.85rem;
+  color: var(--color-ink-muted);
+  line-height: 1.4;
+}
+
+.phase1-quality-toggle {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--color-parchment-light);
+  border: 1px solid var(--color-parchment-border);
+  border-radius: 999px;
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.phase1-quality-toggle:hover {
+  background: #fff9ef;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 190, 90, 0.3);
+}
