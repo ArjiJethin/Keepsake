@@ -5,18 +5,13 @@ import './CustomCursor.css';
 
 export const CustomCursor: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
-    const isAltCursorMode = useGameStore((state) => state.isAltCursorMode);
-    const isPointerLocked = useGameStore((state) => state.isPointerLocked);
+    const inputMode = useGameStore((state) => state.inputMode);
     const activeModal = useGameStore((state) => state.activeModal);
 
     const cursorRef = useRef<HTMLDivElement>(null);
 
-    // Show custom botanical cursor when Alt is held, a modal is open, or on the loading screen
     const showBotanicalCursor =
-        phase !== 'exploring' ||
-        isAltCursorMode ||
-        activeModal !== 'none' ||
-        !isPointerLocked;
+        phase !== 'exploring' || inputMode === 'CURSOR' || activeModal !== 'none';
 
     useEffect(() => {
         const onMouseMove = (e: MouseEvent) => {
@@ -42,7 +37,7 @@ export const CustomCursor: React.FC = () => {
     return (
         <div
             ref={cursorRef}
-            className={`keepsake-botanical-cursor ${isAltCursorMode ? 'keepsake-botanical-cursor--alt-active' : ''
+            className={`keepsake-botanical-cursor ${inputMode === 'CURSOR' ? 'keepsake-botanical-cursor--alt-active' : ''
                 }`}
             aria-hidden="true"
         >
@@ -65,33 +60,29 @@ export const CustomCursor: React.FC = () => {
                     </filter>
                 </defs>
                 <g filter="url(#cursorWarmGlow)">
-                    {/* Delicate Botanical Leaf Pointer Tip anchored at (3, 3) */}
                     <path
                         d="M 3,3 C 12,4 22,9 26,18 C 17,22 10,16 3,3 Z"
                         fill="#f7ecda"
                         stroke="#c69258"
                         strokeWidth="1.4"
                     />
-                    {/* Inner Golden Leaf Vein */}
                     <path
                         d="M 4,4 Q 14,11 22,16"
                         stroke="#c69258"
                         strokeWidth="1.2"
                         strokeLinecap="round"
                     />
-                    {/* Small Companion Sprout Leaf */}
                     <path
                         d="M 12,18 C 11,24 14,29 20,30 C 20,24 17,20 12,18 Z"
                         fill="#e8b882"
                         stroke="#b58046"
                         strokeWidth="1"
                     />
-                    {/* Glowing Golden Dewdrop at Tip */}
                     <circle cx="3.5" cy="3.5" r="2.2" fill="#ffd87d" />
                 </g>
             </svg>
-            {isAltCursorMode && (
-                <span className="cursor-mode-tag">UI Pointer</span>
+            {inputMode === 'CURSOR' && (
+                <span className="cursor-mode-tag">UI Mode (Alt to resume look)</span>
             )}
         </div>
     );

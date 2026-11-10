@@ -17,6 +17,8 @@ import './GameHUD.css';
 
 export const GameHUD: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
+    const inputMode = useGameStore((state) => state.inputMode);
+    const toggleInputMode = useGameStore((state) => state.toggleInputMode);
     const nearbyMemory = useGameStore((state) => state.nearbyMemory);
     const activeMemory = useGameStore((state) => state.activeMemory);
     const persistentMemories = useGameStore((state) => state.persistentMemories);
@@ -28,14 +30,11 @@ export const GameHUD: React.FC = () => {
     const toggleCharacterModel = useGameStore(
         (state) => state.toggleCharacterModel
     );
-    const isAltCursorMode = useGameStore((state) => state.isAltCursorMode);
-    const isPointerLocked = useGameStore((state) => state.isPointerLocked);
     const nearbyZone = useGameStore((state) => state.nearbyZone);
     const activeChunkCoord = useGameStore((state) => state.activeChunkCoord);
     const setPhase = useGameStore((state) => state.setPhase);
     const setIntroStage = useGameStore((state) => state.setIntroStage);
 
-    // Allow pressing 'C' to toggle between Female & Male Explorer anytime
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (
@@ -52,7 +51,6 @@ export const GameHUD: React.FC = () => {
 
     if (phase !== 'exploring') return null;
 
-    // Keep activeMemory synchronized with latest growthStage from persistentMemories
     const currentMemoryData = activeMemory
         ? persistentMemories.find((m) => m.id === activeMemory.id) || activeMemory
         : null;
@@ -102,7 +100,7 @@ export const GameHUD: React.FC = () => {
                 </div>
             </div>
 
-            {/* Top-Center Landmark Zone Banner (Memory Trees, Reflection Pond, Hidden Pathways) */}
+            {/* Top-Center Landmark Zone Banner */}
             {nearbyZone && !currentMemoryData && (
                 <div className="hud-zone-banner">
                     <span className="hud-zone-type">
@@ -113,7 +111,7 @@ export const GameHUD: React.FC = () => {
                 </div>
             )}
 
-            {/* Top-Right Circular Parchment Action Buttons */}
+            {/* Top-Right Action Bar */}
             <div className="hud-top-right">
                 <button
                     className="hud-explorer-switch-pill"
@@ -148,7 +146,7 @@ export const GameHUD: React.FC = () => {
                 </button>
             </div>
 
-            {/* Contextual Proximity Prompt ("Remember? [E]") */}
+            {/* Contextual Proximity Prompt */}
             {nearbyMemory && !currentMemoryData && (
                 <div className="hud-proximity-prompt">
                     <button
@@ -164,7 +162,7 @@ export const GameHUD: React.FC = () => {
                 </div>
             )}
 
-            {/* Bottom-Left Movement & Camera Control Guide */}
+            {/* Bottom-Left Controls */}
             <div className="hud-bottom-left-controls">
                 <div className="control-row">
                     <div className="wasd-cluster">
@@ -183,20 +181,22 @@ export const GameHUD: React.FC = () => {
                 <div className="control-row">
                     <span className="mouse-icon-badge" />
                     <span className="control-label">
-                        {isPointerLocked
-                            ? 'Mouse Look Active (Scroll Zoom)'
-                            : 'Click Canvas to Lock Mouse Look'}
+                        {inputMode === 'CAMERA'
+                            ? 'Mode A: Camera Look Active'
+                            : 'Mode B: UI Cursor Active (Click World or Alt to Look)'}
                     </span>
                 </div>
 
                 <div className="control-row">
                     <kbd
-                        className={`key-cap key-wide ${isAltCursorMode ? 'key-cap--active' : ''
+                        className={`key-cap key-wide ${inputMode === 'CURSOR' ? 'key-cap--active' : ''
                             }`}
+                        onClick={toggleInputMode}
+                        style={{ cursor: 'pointer', pointerEvents: 'auto' }}
                     >
                         Alt
                     </kbd>
-                    <span className="control-label">Hold for Botanical UI Cursor</span>
+                    <span className="control-label">Toggle Camera / UI Cursor</span>
                 </div>
 
                 <div className="control-row">
@@ -214,7 +214,7 @@ export const GameHUD: React.FC = () => {
                 </div>
             </div>
 
-            {/* Bottom-Right Main "Remember" Button */}
+            {/* Bottom-Right "Remember" Button */}
             <div className="hud-bottom-right">
                 <button
                     className="hud-remember-main-btn"
@@ -227,7 +227,7 @@ export const GameHUD: React.FC = () => {
                 </button>
             </div>
 
-            {/* MEMORY ECHO PRESENTATION MODAL (Supports Voice, Ambient Audio, Growth & Notes) */}
+            {/* Memory Modal */}
             {currentMemoryData && (
                 <div className="memory-modal-backdrop" onClick={closeMemory}>
                     <div
@@ -263,7 +263,6 @@ export const GameHUD: React.FC = () => {
                             </p>
                         </div>
 
-                        {/* Floating Memory Photograph & Echo Audio Wave Preview */}
                         <div className="memory-visual-frame">
                             <div className="memory-visual-art">
                                 <div className="memory-art-sun" />
@@ -278,7 +277,6 @@ export const GameHUD: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Spoken Voice Echo Transcript */}
                         {currentMemoryData.echo?.voiceTranscript && (
                             <blockquote className="memory-voice-echo">
                                 {currentMemoryData.echo.voiceTranscript}

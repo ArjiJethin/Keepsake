@@ -74,11 +74,11 @@ export const LoadingScreen: React.FC = () => {
     const setIntroStage = useGameStore((state) => state.setIntroStage);
     const characterModel = useGameStore((state) => state.characterModel);
     const setCharacterModel = useGameStore((state) => state.setCharacterModel);
+    const setInputMode = useGameStore((state) => state.setInputMode);
 
     const maskPathRefs = useRef<Array<SVGPathElement | null>>([]);
     const underlineVisRef = useRef<SVGPathElement | null>(null);
     const brushFollowerRef = useRef<HTMLDivElement | null>(null);
-    const wetTipCircleRef = useRef<SVGCircleElement | null>(null);
 
     const [paintComplete, setPaintComplete] = useState(false);
 
@@ -165,7 +165,7 @@ export const LoadingScreen: React.FC = () => {
                         const dy = aheadPt.y - pt.y;
                         if (Math.hypot(dx, dy) > 0.05) {
                             const strokeDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
-                            targetAngle = clampNum(strokeDeg * 0.22 - 14, -28, 8);
+                            targetAngle = Math.max(-28, Math.min(8, strokeDeg * 0.22 - 14));
                         }
                     }
                 }
@@ -173,11 +173,6 @@ export const LoadingScreen: React.FC = () => {
                 smoothX += (targetX - smoothX) * 0.36;
                 smoothY += (targetY - smoothY) * 0.36;
                 smoothAngle += (targetAngle - smoothAngle) * 0.26;
-
-                if (wetTipCircleRef.current) {
-                    wetTipCircleRef.current.setAttribute('cx', `${smoothX}`);
-                    wetTipCircleRef.current.setAttribute('cy', `${smoothY}`);
-                }
 
                 if (brushFollowerRef.current) {
                     const pctX = (smoothX / 920) * 100;
@@ -229,6 +224,8 @@ export const LoadingScreen: React.FC = () => {
 
         setTimeout(() => {
             setPhase('exploring');
+            // Direct transition into Mode A: Camera Mode automatically
+            setInputMode('CAMERA');
         }, 2750);
     };
 
@@ -257,7 +254,6 @@ export const LoadingScreen: React.FC = () => {
                             xmlns="http://www.w3.org/2000/svg"
                         >
                             <defs>
-                                {/* Bristle Edge Displacement Filter so mask edges feel like real paint bristles */}
                                 <filter id="bristleMaskEdge" x="-10%" y="-10%" width="120%" height="120%">
                                     <feTurbulence
                                         type="fractalNoise"
@@ -360,18 +356,6 @@ export const LoadingScreen: React.FC = () => {
                                         fill="#f2dfc4"
                                     />
                                 </g>
-
-                                {/* Active Wet Paint Sheen under the Brush Tip */}
-                                {introStage === 2 && (
-                                    <circle
-                                        ref={wetTipCircleRef}
-                                        cx="225"
-                                        cy="46"
-                                        r="16"
-                                        fill="#fffaf0"
-                                        opacity="0.65"
-                                    />
-                                )}
                             </g>
                         </svg>
 
@@ -484,7 +468,6 @@ export const LoadingScreen: React.FC = () => {
                 <div className="loading-lower-slot">
                     {introStage === 4 && (
                         <div className="intro-interactive-stack">
-                            {/* Selectable Playable Explorer Archetype (Matches Character Model F.png & M.png) */}
                             <div className="explorer-select-row">
                                 <button
                                     type="button"
@@ -628,7 +611,3 @@ export const LoadingScreen: React.FC = () => {
         </div>
     );
 };
-
-function clampNum(val: number, min: number, max: number): number {
-    return Math.max(min, Math.min(max, val));
-}

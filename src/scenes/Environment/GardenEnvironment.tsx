@@ -10,6 +10,7 @@ import {
 } from './lowPolyUtils';
 import { ChunkedTerrain } from './ChunkedTerrain';
 import { MemoryPedestals } from '../../components/Memory/MemoryPedestals';
+import { MemoryRadianceRays } from '../../components/Memory/MemoryRadianceRays';
 import { collisionManager } from '../../systems/Collision/collisionSystem';
 import { playerTelemetry } from '../../store/useGameStore';
 
@@ -232,12 +233,6 @@ const GiantSakuraTree: React.FC<{ position: [number, number, number] }> = ({
     );
 };
 
-/**
- * FIXED WORLD-SPACE BLOSSOM PETALS:
- * Petals exist strictly in independent world coordinates (wx, wy, wz) — never parented
- * or locked to the player's position. Each petal drifts with gentle wind & gravity,
- * and recycles individually when touching the ground or drifting outside a 32m radius.
- */
 const WorldSpaceBlossomPetals: React.FC = () => {
     const instancedRef = useRef<THREE.InstancedMesh>(null);
     const dummy = useMemo(() => new THREE.Object3D(), []);
@@ -269,21 +264,18 @@ const WorldSpaceBlossomPetals: React.FC = () => {
         for (let i = 0; i < particles.length; i++) {
             const p = particles[i];
 
-            // Update strictly in world space with gentle sinusoidal breeze flutter
             p.wx += (p.vx + Math.sin(t * 1.4 + p.phase) * 0.28) * delta;
             p.wy += (p.vy + Math.cos(t * 2.1 + p.phase) * 0.12) * delta;
             p.wz += (p.vz + Math.cos(t * 1.2 + p.phase) * 0.24) * delta;
 
             const groundY = getGardenTerrainHeight(p.wx, p.wz);
 
-            // Recycle smoothly high up if petal touches ground
             if (p.wy < groundY + 0.15) {
                 p.wy = groundY + 7.5 + seededRandom(i + t) * 3.5;
                 p.wx = px + (seededRandom(i * 19 + t) - 0.5) * 38;
                 p.wz = pz + (seededRandom(i * 31 + t) - 0.5) * 38;
             }
 
-            // Wrap individual petal at perimeter boundary so it never moves with the player
             const dx = p.wx - px;
             const dz = p.wz - pz;
             if (dx > maxRadius) p.wx -= maxRadius * 2;
@@ -454,6 +446,7 @@ export const GardenEnvironment: React.FC = () => {
             <GiantSakuraTree position={[6.2, sakuraY - 0.15, 2.2]} />
             <HorizonVista />
             <WorldSpaceBlossomPetals />
+            <MemoryRadianceRays />
             <MemoryPedestals />
         </group>
     );

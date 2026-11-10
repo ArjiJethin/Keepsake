@@ -14,106 +14,105 @@ const MAX_DISTANCE = 10.5;
 export const ThirdPersonCamera: React.FC = () => {
     const { gl } = useThree();
     const phase = useGameStore((state) => state.phase);
+    const inputMode = useGameStore((state) => state.inputMode);
+    const setInputMode = useGameStore((state) => state.setInputMode);
+    const toggleInputMode = useGameStore((state) => state.toggleInputMode);
     const activeModal = useGameStore((state) => state.activeModal);
-    const setPointerLocked = useGameStore((state) => state.setPointerLocked);
-    const setAltCursorMode = useGameStore((state) => state.setAltCursorMode);
 
     const currentPivot = useRef(new THREE.Vector3(0, 1.55, 7.5));
     const currentLookAt = useRef(new THREE.Vector3(0, 1.55, 3.0));
     const currentDistance = useRef(playerTelemetry.cameraDistance);
-    const lastClientPos = useRef<{ x: number; y: number } | null>(null);
-    const isAltHeldRef = useRef(false);
 
+    // Sync Pointer Lock with Mode A / Mode B
     useEffect(() => {
         const dom = gl.domElement;
 
-        // 1. Engage Pointer Lock on Canvas Click during normal exploration
-        const onCanvasClick = () => {
-            const state = useGameStore.getState();
-            if (
-                state.phase === 'exploring' &&
-                state.activeModal === 'none' &&
-                !isAltHeldRef.current &&
-                document.pointerLockElement !== dom
-            ) {
+        const requestLock = async () => {
+            if (document.pointerLockElement !== dom) {
                 try {
-                    dom.requestPointerLock?.();
+                    await dom.requestPointerLock();
                 } catch {
-                    // Gracefully ignore if browser blocks automatic lock
+                    // Handled gracefully by browser security policies
                 }
             }
         };
+
+        const exitLock = () => {
+            if (document.pointerLockElement === dom) {
+                try {
+                    document.exitPointerLock();
+                } catch {
+                    // Handled gracefully
+                }
+            }
+        };
+
+        if (phase === 'exploring') {
+            if (inputMode === 'CAMERA' && activeModal === 'none') {
+                requestLock();
+            } else {
+                exitLock();
+            }
+        }
 
         const onPointerLockChange = () => {
-            const locked = document.pointerLockElement === dom;
-            setPointerLocked(locked);
-            lastClientPos.current = null;
+            const isLocked = document.pointerLockElement === dom;
+            // If user presses Escape, synchronize to CURSOR mode
+            if (!isLocked && useGameStore.getState().inputMode === 'CAMERA') {
+                setInputMode('CURSOR');
+            }
         };
 
-        // 2. Alt Interaction Mode: Hold Alt to release lock & show Botanical SVG Cursor
+        document.addEventListener('pointerlockchange', onPointerLockChange);
+        return () => {
+            document.removeEventListener('pointerlockchange', onPointerLockChange);
+            exitLock();
+        };
+    }, [gl, phase, inputMode, activeModal, setInputMode]);
+
+    // Global Keyboard & Mouse Listener (Mode Toggling)
+    useEffect(() => {
+        const dom = gl.domElement;
+
         const onKeyDown = (e: KeyboardEvent) => {
+            if (phase !== 'exploring') return;
+
+            // ALT Toggles between Mode A (Camera) and Mode B (Cursor)
             if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
                 e.preventDefault();
-                if (!isAltHeldRef.current) {
-                    isAltHeldRef.current = true;
-                    setAltCursorMode(true);
-                    lastClientPos.current = null;
-                    if (document.pointerLockElement === dom) {
-                        try {
-                            document.exitPointerLock?.();
-                        } catch {
-                            // Ignore
-                        }
-                    }
-                }
+                toggleInputMode();
             }
         };
 
-        const onKeyUp = (e: KeyboardEvent) => {
-            if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
+        // Clicking the 3D World in Cursor Mode returns to Camera Mode
+        const onCanvasMouseDown = (e: MouseEvent) => {
+            if (phase !== 'exploring') return;
+            if (useGameStore.getState().activeModal !== 'none') return;
+
+            if (useGameStore.getState().inputMode === 'CURSOR') {
+                // Return to camera mode
+                setInputMode('CAMERA');
                 e.preventDefault();
-                isAltHeldRef.current = false;
-                setAltCursorMode(false);
-                lastClientPos.current = null;
             }
         };
 
-        const onWindowBlur = () => {
-            isAltHeldRef.current = false;
-            setAltCursorMode(false);
-            lastClientPos.current = null;
-        };
-
-        // 3. Automatic Mouse-Look without holding Left-Click
         const onMouseMove = (e: MouseEvent) => {
             const state = useGameStore.getState();
+            // CRITICAL FIX: In Mode B (CURSOR) or when a modal is open, mouse movement is COMPLETELY ignored by the camera
             if (
                 state.phase !== 'exploring' ||
-                state.activeModal !== 'none' ||
-                isAltHeldRef.current
+                state.inputMode !== 'CAMERA' ||
+                state.activeModal !== 'none'
             ) {
-                lastClientPos.current = null;
                 return;
             }
 
-            const sensitivity = 0.0029;
-            let dx = 0;
-            let dy = 0;
+            const sensitivity = 0.0028;
+            const dx = e.movementX || 0;
+            const dy = e.movementY || 0;
 
-            if (document.pointerLockElement === dom) {
-                dx = e.movementX;
-                dy = e.movementY;
-            } else {
-                // Fallback automatic mouse-look before pointer lock is captured
-                if (lastClientPos.current !== null) {
-                    dx = e.clientX - lastClientPos.current.x;
-                    dy = e.clientY - lastClientPos.current.y;
-                }
-                lastClientPos.current = { x: e.clientX, y: e.clientY };
-            }
-
-            // Guard against browser pointer-lock attachment spikes
-            if (Math.abs(dx) > 280 || Math.abs(dy) > 280) return;
+            // Spike suppression
+            if (Math.abs(dx) > 300 || Math.abs(dy) > 300) return;
 
             playerTelemetry.cameraYaw -= dx * sensitivity;
             playerTelemetry.cameraPitch = THREE.MathUtils.clamp(
@@ -125,7 +124,8 @@ export const ThirdPersonCamera: React.FC = () => {
 
         const onWheel = (e: WheelEvent) => {
             const state = useGameStore.getState();
-            if (state.phase !== 'exploring' || state.activeModal !== 'none') return;
+            if (state.phase !== 'exploring' || state.inputMode !== 'CAMERA') return;
+
             playerTelemetry.cameraDistance = THREE.MathUtils.clamp(
                 playerTelemetry.cameraDistance + e.deltaY * 0.004,
                 2.6,
@@ -133,35 +133,18 @@ export const ThirdPersonCamera: React.FC = () => {
             );
         };
 
-        dom.addEventListener('click', onCanvasClick);
-        document.addEventListener('pointerlockchange', onPointerLockChange);
         window.addEventListener('keydown', onKeyDown);
-        window.addEventListener('keyup', onKeyUp);
-        window.addEventListener('blur', onWindowBlur);
+        dom.addEventListener('mousedown', onCanvasMouseDown);
         window.addEventListener('mousemove', onMouseMove);
         dom.addEventListener('wheel', onWheel, { passive: true });
 
         return () => {
-            dom.removeEventListener('click', onCanvasClick);
-            document.removeEventListener('pointerlockchange', onPointerLockChange);
             window.removeEventListener('keydown', onKeyDown);
-            window.removeEventListener('keyup', onKeyUp);
-            window.removeEventListener('blur', onWindowBlur);
+            dom.removeEventListener('mousedown', onCanvasMouseDown);
             window.removeEventListener('mousemove', onMouseMove);
             dom.removeEventListener('wheel', onWheel);
         };
-    }, [gl, setPointerLocked, setAltCursorMode]);
-
-    // Automatically release pointer lock if a modal (like Memory Echo card) opens
-    useEffect(() => {
-        if (activeModal !== 'none' && document.pointerLockElement) {
-            try {
-                document.exitPointerLock?.();
-            } catch {
-                // Ignore
-            }
-        }
-    }, [activeModal]);
+    }, [gl, phase, setInputMode, toggleInputMode]);
 
     useFrame((state, rawDelta) => {
         if (phase !== 'exploring') return;
@@ -169,11 +152,10 @@ export const ThirdPersonCamera: React.FC = () => {
 
         const [px, py, pz] = playerTelemetry.position;
 
-        // 1. Smoothly follow character shoulder/head pivot
+        // Follow character shoulder/head pivot smoothly
         const desiredPivot = new THREE.Vector3(px, py + 1.56, pz);
         currentPivot.current.lerp(desiredPivot, Math.min(1, delta * 13));
 
-        // 2. Spherical camera position from yaw & pitch
         const yaw = playerTelemetry.cameraYaw;
         const pitch = playerTelemetry.cameraPitch;
         const desiredDist = playerTelemetry.cameraDistance;
@@ -188,7 +170,7 @@ export const ThirdPersonCamera: React.FC = () => {
             .clone()
             .addScaledVector(offsetDir, desiredDist);
 
-        // 3. Multi-Probe Obstacle Collision (Center + Left/Right/Up Whiskers)
+        // Multi-Probe Whisker Obstacle Collision
         const rightWhisker = new THREE.Vector3(
             Math.cos(yaw),
             0,
@@ -223,7 +205,7 @@ export const ThirdPersonCamera: React.FC = () => {
         );
         let targetSafeDist = Math.max(MIN_DISTANCE, desiredDist * safeFraction);
 
-        // 4. Terrain Slope & Ground Collision Prevention
+        // Terrain slope avoidance
         for (const sampleT of [0.35, 0.68, 1.0]) {
             const testPos = currentPivot.current
                 .clone()
@@ -242,7 +224,6 @@ export const ThirdPersonCamera: React.FC = () => {
             }
         }
 
-        // 5. Smooth Pull-In on Obstruction & Gentle Restore When Clear
         const distLerpSpeed =
             targetSafeDist < currentDistance.current ? 18.5 : 4.8;
         currentDistance.current = THREE.MathUtils.lerp(

@@ -9,6 +9,8 @@ export type AppPhase = 'loading' | 'intro' | 'exploring';
 export type IntroStage = 1 | 2 | 3 | 4 | 5 | 6;
 export type QualityPreset = 'high' | 'low';
 export type CharacterArchetype = 'female' | 'male';
+export type InputMode = 'CAMERA' | 'CURSOR';
+
 export type ActiveModal =
     | 'none'
     | 'memory'
@@ -17,9 +19,6 @@ export type ActiveModal =
     | 'settings'
     | 'createMemory';
 
-/**
- * High-frequency 60fps mutable telemetry shared across Three.js systems
- */
 export const playerTelemetry = {
     position: [0, 0, 7.5] as [number, number, number],
     velocity: [0, 0, 0] as [number, number, number],
@@ -30,6 +29,7 @@ export const playerTelemetry = {
     isGrounded: true,
     moveState: 'idle' as 'idle' | 'walk' | 'run' | 'jump',
     nearestMemoryDistance: 999,
+    nearestMemoryId: null as string | null,
 };
 
 interface GameState {
@@ -42,32 +42,30 @@ interface GameState {
     quality: QualityPreset;
     toggleQuality: () => void;
 
-    // Selectable Explorer Model ('female' = Character Model F, 'male' = Character Model M)
     characterModel: CharacterArchetype;
     setCharacterModel: (model: CharacterArchetype) => void;
     toggleCharacterModel: () => void;
 
-    // Pointer Lock & Alt UI Cursor Mode
-    isPointerLocked: boolean;
-    setPointerLocked: (locked: boolean) => void;
-    isAltCursorMode: boolean;
-    setAltCursorMode: (active: boolean) => void;
+    // Mutually Exclusive Input State (Mode A vs Mode B)
+    inputMode: InputMode;
+    setInputMode: (mode: InputMode) => void;
+    toggleInputMode: () => void;
 
-    // Infinite Chunk Tracking
+    // World Generation & Pre-warm Readiness
+    worldReady: boolean;
+    setWorldReady: (ready: boolean) => void;
     activeChunkCoord: [number, number];
     setActiveChunkCoord: (coord: [number, number]) => void;
 
-    // Persistent Memory Entities (Survive Chunk Unloads)
+    // Persistent Memories & Radiance Dynamics
     persistentMemories: MemoryItem[];
     registerPersistentMemories: (memories: MemoryItem[]) => void;
     advanceMemoryGrowth: (id: string) => void;
 
-    // Future Interactive Environment Zones
     landmarkZones: EnvironmentLandmarkZone[];
     nearbyZone: EnvironmentLandmarkZone | null;
     setNearbyZone: (zone: EnvironmentLandmarkZone | null) => void;
 
-    // Proximity & Active Echo Interaction
     nearbyMemory: MemoryItem | null;
     setNearbyMemory: (memory: MemoryItem | null) => void;
 
@@ -108,10 +106,15 @@ export const useGameStore = create<GameState>((set) => ({
             characterModel: state.characterModel === 'female' ? 'male' : 'female',
         })),
 
-    isPointerLocked: false,
-    setPointerLocked: (isPointerLocked) => set({ isPointerLocked }),
-    isAltCursorMode: false,
-    setAltCursorMode: (isAltCursorMode) => set({ isAltCursorMode }),
+    inputMode: 'CAMERA',
+    setInputMode: (inputMode) => set({ inputMode }),
+    toggleInputMode: () =>
+        set((state) => ({
+            inputMode: state.inputMode === 'CAMERA' ? 'CURSOR' : 'CAMERA',
+        })),
+
+    worldReady: false,
+    setWorldReady: (worldReady) => set({ worldReady }),
 
     activeChunkCoord: [0, 0],
     setActiveChunkCoord: (coord) =>
@@ -204,13 +207,19 @@ export const useGameStore = create<GameState>((set) => ({
             activeMemory: memory,
             activeEchoId: memory.id,
             activeModal: 'memory',
+            inputMode: 'CURSOR',
             lastInteractedId: memory.id,
             discoveredIds: state.discoveredIds.includes(memory.id)
                 ? state.discoveredIds
                 : [...state.discoveredIds, memory.id],
         })),
     closeMemory: () =>
-        set({ activeMemory: null, activeEchoId: null, activeModal: 'none' }),
+        set({
+            activeMemory: null,
+            activeEchoId: null,
+            activeModal: 'none',
+            inputMode: 'CAMERA',
+        }),
 
     activeEchoId: null,
     setActiveEchoId: (activeEchoId) => set({ activeEchoId }),
@@ -219,7 +228,11 @@ export const useGameStore = create<GameState>((set) => ({
     triggerMemoryPulse: (id) => set({ lastInteractedId: id }),
 
     activeModal: 'none',
-    setActiveModal: (modal) => set({ activeModal: modal }),
+    setActiveModal: (modal) =>
+        set({
+            activeModal: modal,
+            inputMode: modal === 'none' ? 'CAMERA' : 'CURSOR',
+        }),
 
     discoveredIds: [],
     markDiscovered: (id) =>
