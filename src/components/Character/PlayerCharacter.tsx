@@ -8,6 +8,7 @@ import {
     getGardenTerrainNormal,
 } from '../../scenes/Environment/lowPolyUtils';
 import { collisionManager } from '../../systems/Collision/collisionSystem';
+import { ExplorerModelMesh, type ExplorerRigRefs } from './ExplorerModelMesh';
 
 const GRAVITY = -22.0;
 const JUMP_VELOCITY = 7.8;
@@ -19,22 +20,41 @@ const DECELERATION = 14.0;
 export const PlayerCharacter: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
     const activeModal = useGameStore((state) => state.activeModal);
+    const characterModel = useGameStore((state) => state.characterModel);
 
     const rootRef = useRef<THREE.Group>(null);
-    const bodyRef = useRef<THREE.Group>(null);
-    const cloakRef = useRef<THREE.Mesh>(null);
-    const leftLegRef = useRef<THREE.Group>(null);
-    const rightLegRef = useRef<THREE.Group>(null);
-    const leftArmRef = useRef<THREE.Group>(null);
-    const rightArmRef = useRef<THREE.Group>(null);
-    const headRef = useRef<THREE.Group>(null);
-    const satchelRef = useRef<THREE.Group>(null);
+
+    // Articulated Rig References for ExplorerModelMesh
+    const bodyGroup = useRef<THREE.Group>(null);
+    const headGroup = useRef<THREE.Group>(null);
+    const ponchoGroup = useRef<THREE.Group>(null);
+    const scarfTailGroup = useRef<THREE.Group>(null);
+    const backpackGroup = useRef<THREE.Group>(null);
+    const lanternGroup = useRef<THREE.Group>(null);
+    const lanternLight = useRef<THREE.PointLight>(null);
+    const leftArmGroup = useRef<THREE.Group>(null);
+    const rightArmGroup = useRef<THREE.Group>(null);
+    const leftLegGroup = useRef<THREE.Group>(null);
+    const rightLegGroup = useRef<THREE.Group>(null);
+
+    const rigRefs: ExplorerRigRefs = {
+        bodyGroup,
+        headGroup,
+        ponchoGroup,
+        scarfTailGroup,
+        backpackGroup,
+        lanternGroup,
+        lanternLight,
+        leftArmGroup,
+        rightArmGroup,
+        leftLegGroup,
+        rightLegGroup,
+    };
 
     const keys = useRef<{ [key: string]: boolean }>({});
     const velocity = useRef(new THREE.Vector3(0, 0, 0));
     const animCycle = useRef(0);
 
-    // Initialize spawn elevation
     useEffect(() => {
         const startY = getGardenTerrainHeight(
             playerTelemetry.position[0],
@@ -43,14 +63,12 @@ export const PlayerCharacter: React.FC = () => {
         playerTelemetry.position[1] = startY;
     }, []);
 
-    // Keyboard Listeners (WASD, Shift, Space)
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
-            const code = e.code;
-            keys.current[code] = true;
+            keys.current[e.code] = true;
 
             if (
-                code === 'Space' &&
+                e.code === 'Space' &&
                 playerTelemetry.isGrounded &&
                 phase === 'exploring' &&
                 activeModal === 'none'
@@ -64,11 +82,17 @@ export const PlayerCharacter: React.FC = () => {
             keys.current[e.code] = false;
         };
 
+        const onBlur = () => {
+            keys.current = {};
+        };
+
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
+        window.addEventListener('blur', onBlur);
         return () => {
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
+            window.removeEventListener('blur', onBlur);
         };
     }, [phase, activeModal]);
 
@@ -78,14 +102,14 @@ export const PlayerCharacter: React.FC = () => {
 
         const canMove = phase === 'exploring' && activeModal === 'none';
 
-        // 1. Compute Camera-Relative Input Vector
+        // 1. Camera-Relative Movement Vector
         let inputForward = 0;
         let inputRight = 0;
         if (canMove) {
             if (keys.current['KeyW'] || keys.current['ArrowUp']) inputForward += 1;
             if (keys.current['KeyS'] || keys.current['ArrowDown']) inputForward -= 1;
             if (keys.current['KeyD'] || keys.current['ArrowRight']) inputRight += 1;
-            if (keys.current['KeyA'] || keys.current['ArrowLeft']) inputLeftOrRight: inputRight -= 1;
+            if (keys.current['KeyA'] || keys.current['ArrowLeft']) inputRight -= 1;
         }
 
         const inputLen = Math.hypot(inputForward, inputRight);
@@ -94,7 +118,6 @@ export const PlayerCharacter: React.FC = () => {
         const targetSpeed =
             inputLen > 0 ? (isSprinting ? RUN_SPEED : WALK_SPEED) : 0;
 
-        // Direction relative to current camera yaw
         const camYaw = playerTelemetry.cameraYaw;
         const forwardVec = new THREE.Vector3(
             -Math.sin(camYaw),
@@ -115,7 +138,7 @@ export const PlayerCharacter: React.FC = () => {
                 .normalize();
         }
 
-        // 2. Smooth Horizontal Acceleration & Deceleration + Slope Adjustment
+        // 2. Smooth Acceleration, Deceleration & Slope Handling
         const [curX, curY, curZ] = playerTelemetry.position;
         const surfaceNormal = getGardenTerrainNormal(curX, curZ);
         const slopeFactor = THREE.MathUtils.clamp(surfaceNormal.y, 0.65, 1.0);
@@ -135,14 +158,14 @@ export const PlayerCharacter: React.FC = () => {
             Math.min(1, delta * accelRate)
         );
 
-        // 3. Apply Gravity & Vertical Velocity
+        // 3. Gravity & Jump Physics
         velocity.current.y += GRAVITY * delta;
 
         let nextX = curX + velocity.current.x * delta;
         let nextZ = curZ + velocity.current.z * delta;
         let nextY = curY + velocity.current.y * delta;
 
-        // 4. Resolve Solid Obstacle Collisions (Trees, Boulders, Archway, Pedestals)
+        // 4. Obstacle Collision Resolution
         [nextX, nextZ] = collisionManager.resolvePlayerMovement(
             nextX,
             nextY,
@@ -150,7 +173,7 @@ export const PlayerCharacter: React.FC = () => {
             0.42
         );
 
-        // 5. Ground Elevation Detection & Smooth Terrain Sticking
+        // 5. Ground Clamping & Downhill Slope Adherence
         const groundHeight = getGardenTerrainHeight(nextX, nextZ);
         if (nextY <= groundHeight + 0.03 && velocity.current.y <= 0) {
             nextY = groundHeight;
@@ -158,10 +181,9 @@ export const PlayerCharacter: React.FC = () => {
             playerTelemetry.isGrounded = true;
         } else if (
             playerTelemetry.isGrounded &&
-            nextY - groundHeight < 0.35 &&
+            nextY - groundHeight < 0.38 &&
             velocity.current.y <= 0
         ) {
-            // Stick smoothly when walking downhill over slopes
             nextY = groundHeight;
             velocity.current.y = 0;
         } else {
@@ -175,25 +197,25 @@ export const PlayerCharacter: React.FC = () => {
             velocity.current.z,
         ];
 
-        // 6. Smooth Character Rotation along Movement Direction
+        // 6. Natural Shortest-Arc Turning
         const horizSpeed = Math.hypot(velocity.current.x, velocity.current.z);
-        if (horizSpeed > 0.25) {
+        if (horizSpeed > 0.2) {
             const targetAngle = Math.atan2(velocity.current.x, velocity.current.z);
             let angleDiff = targetAngle - playerTelemetry.rotationY;
             while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
             while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-            playerTelemetry.rotationY += angleDiff * Math.min(1, delta * 12);
+            playerTelemetry.rotationY += angleDiff * Math.min(1, delta * 12.5);
         }
 
         rootRef.current.position.set(nextX, nextY, nextZ);
         rootRef.current.rotation.y = playerTelemetry.rotationY;
 
-        // 7. Procedural Character Animation (Idle, Walk, Run, Jump)
+        // 7. Articulated Rig Animation (Walk, Sprint, Jump, Scarf/Lantern Physics)
         if (!playerTelemetry.isGrounded) {
             playerTelemetry.moveState = 'jump';
         } else if (horizSpeed > 5.8) {
             playerTelemetry.moveState = 'run';
-        } else if (horizSpeed > 0.25) {
+        } else if (horizSpeed > 0.22) {
             playerTelemetry.moveState = 'walk';
         } else {
             playerTelemetry.moveState = 'idle';
@@ -201,100 +223,134 @@ export const PlayerCharacter: React.FC = () => {
 
         const cycleSpeed =
             playerTelemetry.moveState === 'run'
-                ? 13.5
+                ? 13.8
                 : playerTelemetry.moveState === 'walk'
-                    ? 8.5
-                    : 2.2;
+                    ? 8.6
+                    : 2.0;
         animCycle.current += delta * cycleSpeed;
         const c = animCycle.current;
-
-        const strideAmp = THREE.MathUtils.clamp(horizSpeed / RUN_SPEED, 0, 1);
+        const stride = THREE.MathUtils.clamp(horizSpeed / RUN_SPEED, 0, 1);
 
         if (
-            leftLegRef.current &&
-            rightLegRef.current &&
-            leftArmRef.current &&
-            rightArmRef.current &&
-            bodyRef.current &&
-            cloakRef.current &&
-            headRef.current &&
-            satchelRef.current
+            leftLegGroup.current &&
+            rightLegGroup.current &&
+            leftArmGroup.current &&
+            rightArmGroup.current &&
+            bodyGroup.current &&
+            ponchoGroup.current &&
+            scarfTailGroup.current &&
+            backpackGroup.current &&
+            lanternGroup.current &&
+            headGroup.current
         ) {
             if (!playerTelemetry.isGrounded) {
-                // Jump / Airborne pose
-                leftLegRef.current.rotation.x = THREE.MathUtils.lerp(
-                    leftLegRef.current.rotation.x,
-                    0.45,
+                // Expressive Jump / Airborne Pose
+                leftLegGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    leftLegGroup.current.rotation.x,
+                    0.48,
                     delta * 10
                 );
-                rightLegRef.current.rotation.x = THREE.MathUtils.lerp(
-                    rightLegRef.current.rotation.x,
-                    -0.35,
+                rightLegGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    rightLegGroup.current.rotation.x,
+                    -0.38,
                     delta * 10
                 );
-                leftArmRef.current.rotation.x = THREE.MathUtils.lerp(
-                    leftArmRef.current.rotation.x,
-                    -0.5,
+                leftArmGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    leftArmGroup.current.rotation.x,
+                    -0.45,
                     delta * 10
                 );
-                rightArmRef.current.rotation.x = THREE.MathUtils.lerp(
-                    rightArmRef.current.rotation.x,
-                    0.4,
+                rightArmGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    rightArmGroup.current.rotation.x,
+                    0.35,
                     delta * 10
                 );
-                cloakRef.current.rotation.x = THREE.MathUtils.lerp(
-                    cloakRef.current.rotation.x,
-                    0.32,
+                scarfTailGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    scarfTailGroup.current.rotation.x,
+                    0.55,
                     delta * 8
                 );
-            } else if (horizSpeed > 0.2) {
-                // Walking / Running cycle
-                const legSwing = Math.sin(c) * (0.55 * strideAmp + 0.15);
-                leftLegRef.current.rotation.x = legSwing;
-                rightLegRef.current.rotation.x = -legSwing;
+                lanternGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    lanternGroup.current.rotation.x,
+                    0.38,
+                    delta * 8
+                );
+            } else if (horizSpeed > 0.18) {
+                // Grounded Walk & Sprint Stride
+                const legSwing = Math.sin(c) * (0.58 * stride + 0.14);
+                leftLegGroup.current.rotation.x = legSwing;
+                rightLegGroup.current.rotation.x = -legSwing;
 
-                leftArmRef.current.rotation.x = -legSwing * 0.65;
-                rightArmRef.current.rotation.x = legSwing * 0.65;
+                leftArmGroup.current.rotation.x = -legSwing * 0.62;
+                rightArmGroup.current.rotation.x = legSwing * 0.62;
 
-                // Vertical step bounce & forward torso lean
-                bodyRef.current.position.y = Math.abs(Math.cos(c)) * 0.065 * strideAmp;
-                bodyRef.current.rotation.x = 0.08 + strideAmp * 0.12;
+                // Vertical gait bounce & forward sprint lean
+                bodyGroup.current.position.y = Math.abs(Math.cos(c)) * 0.062 * stride;
+                bodyGroup.current.rotation.x = 0.06 + stride * 0.13;
+                bodyGroup.current.rotation.z = Math.sin(c) * 0.025 * stride;
 
-                // Flowing cloak & satchel bounce
-                cloakRef.current.rotation.x =
-                    0.12 + strideAmp * 0.22 + Math.sin(c * 2) * 0.04;
-                satchelRef.current.rotation.z = Math.sin(c) * 0.08 * strideAmp;
+                // Poncho, Scarf & Lantern secondary motion
+                ponchoGroup.current.rotation.x =
+                    0.05 + stride * 0.1 + Math.sin(c * 2) * 0.03;
+                scarfTailGroup.current.rotation.x =
+                    0.18 + stride * 0.38 + Math.sin(c * 2 + 0.6) * 0.09;
+                scarfTailGroup.current.rotation.z = Math.cos(c) * 0.08 * stride;
+                backpackGroup.current.position.y =
+                    1.07 + Math.sin(c * 2 - 0.5) * 0.018 * stride;
+                lanternGroup.current.rotation.x =
+                    0.12 * stride + Math.sin(c * 2 - 0.8) * 0.18 * stride;
+                lanternGroup.current.rotation.z = Math.cos(c) * 0.14 * stride;
             } else {
-                // Gentle breathing idle
-                leftLegRef.current.rotation.x = THREE.MathUtils.lerp(
-                    leftLegRef.current.rotation.x,
+                // Gentle Breathing & Looking Idle
+                leftLegGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    leftLegGroup.current.rotation.x,
                     0,
                     delta * 10
                 );
-                rightLegRef.current.rotation.x = THREE.MathUtils.lerp(
-                    rightLegRef.current.rotation.x,
+                rightLegGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    rightLegGroup.current.rotation.x,
                     0,
                     delta * 10
                 );
-                leftArmRef.current.rotation.x = THREE.MathUtils.lerp(
-                    leftArmRef.current.rotation.x,
+                leftArmGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    leftArmGroup.current.rotation.x,
                     0,
                     delta * 10
                 );
-                rightArmRef.current.rotation.x = THREE.MathUtils.lerp(
-                    rightArmRef.current.rotation.x,
+                rightArmGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    rightArmGroup.current.rotation.x,
                     0,
                     delta * 10
                 );
-                bodyRef.current.position.y = Math.sin(c) * 0.018;
-                bodyRef.current.rotation.x = THREE.MathUtils.lerp(
-                    bodyRef.current.rotation.x,
+                bodyGroup.current.position.y = Math.sin(c) * 0.016;
+                bodyGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    bodyGroup.current.rotation.x,
                     0,
                     delta * 8
                 );
-                cloakRef.current.rotation.x = 0.06 + Math.sin(c) * 0.02;
-                headRef.current.rotation.y = Math.sin(c * 0.5) * 0.06;
+                bodyGroup.current.rotation.z = THREE.MathUtils.lerp(
+                    bodyGroup.current.rotation.z,
+                    0,
+                    delta * 8
+                );
+                ponchoGroup.current.rotation.x = Math.sin(c) * 0.015;
+                scarfTailGroup.current.rotation.x = 0.08 + Math.sin(c * 1.2) * 0.035;
+                lanternGroup.current.rotation.x = Math.sin(c * 1.1) * 0.04;
+                lanternGroup.current.rotation.z = Math.cos(c * 0.9) * 0.03;
+                headGroup.current.rotation.y = Math.sin(c * 0.45) * 0.07;
             }
+        }
+
+        // 8. Signature Memory Lantern Feature: "Glows brighter near memories" (Character Model M.png)
+        if (lanternLight.current) {
+            const memDist = playerTelemetry.nearestMemoryDistance;
+            const proximityBoost =
+                memDist < 7.0 ? Math.pow(1 - memDist / 7.0, 1.5) * 2.2 : 0;
+            lanternLight.current.intensity = THREE.MathUtils.lerp(
+                lanternLight.current.intensity,
+                1.1 + proximityBoost,
+                delta * 6
+            );
         }
     });
 
@@ -302,122 +358,7 @@ export const PlayerCharacter: React.FC = () => {
 
     return (
         <group ref={rootRef} position={[0, 0, 7.5]} rotation={[0, Math.PI, 0]}>
-            <group ref={bodyRef}>
-                {/* Left Leg & Boot */}
-                <group ref={leftLegRef} position={[-0.13, 0.72, 0]}>
-                    {/* Rolled Slate Trousers */}
-                    <mesh position={[0, -0.22, 0]} castShadow>
-                        <cylinderGeometry args={[0.095, 0.085, 0.44, 6]} />
-                        <meshStandardMaterial color="#4a4d57" roughness={0.88} flatShading />
-                    </mesh>
-                    {/* Warm Brown Leather Boot */}
-                    <mesh position={[0, -0.54, 0.02]} castShadow>
-                        <boxGeometry args={[0.15, 0.24, 0.22]} />
-                        <meshStandardMaterial color="#5e3e2e" roughness={0.85} flatShading />
-                    </mesh>
-                </group>
-
-                {/* Right Leg & Boot */}
-                <group ref={rightLegRef} position={[0.13, 0.72, 0]}>
-                    <mesh position={[0, -0.22, 0]} castShadow>
-                        <cylinderGeometry args={[0.095, 0.085, 0.44, 6]} />
-                        <meshStandardMaterial color="#4a4d57" roughness={0.88} flatShading />
-                    </mesh>
-                    <mesh position={[0, -0.54, 0.02]} castShadow>
-                        <boxGeometry args={[0.15, 0.24, 0.22]} />
-                        <meshStandardMaterial color="#5e3e2e" roughness={0.85} flatShading />
-                    </mesh>
-                </group>
-
-                {/* Inner Warm Tunic Torso */}
-                <mesh position={[0, 0.98, 0]} castShadow>
-                    <cylinderGeometry args={[0.21, 0.25, 0.62, 7]} />
-                    <meshStandardMaterial color="#7d5942" roughness={0.85} flatShading />
-                </mesh>
-
-                {/* Signature Warm Parchment-Beige Traveler Poncho / Cloak (Matches Home Screen.jpg) */}
-                <mesh
-                    ref={cloakRef}
-                    position={[0, 1.06, -0.02]}
-                    rotation={[0.06, 0, 0]}
-                    castShadow
-                >
-                    <coneGeometry args={[0.48, 0.68, 7, 1, true]} />
-                    <meshStandardMaterial
-                        color="#d8c09e"
-                        roughness={0.82}
-                        side={THREE.DoubleSide}
-                        flatShading
-                    />
-                </mesh>
-
-                {/* Draped Hood / Collar */}
-                <mesh position={[0, 1.32, -0.03]} rotation={[0.18, 0, 0]} castShadow>
-                    <cylinderGeometry args={[0.22, 0.31, 0.18, 7]} />
-                    <meshStandardMaterial color="#b39370" roughness={0.85} flatShading />
-                </mesh>
-
-                {/* Left & Right Arms */}
-                <group ref={leftArmRef} position={[-0.28, 1.22, 0]}>
-                    <mesh position={[-0.04, -0.22, 0]} rotation={[0, 0, 0.15]} castShadow>
-                        <cylinderGeometry args={[0.075, 0.065, 0.42, 6]} />
-                        <meshStandardMaterial color="#c9ae8c" roughness={0.85} flatShading />
-                    </mesh>
-                </group>
-                <group ref={rightArmRef} position={[0.28, 1.22, 0]}>
-                    <mesh position={[0.04, -0.22, 0]} rotation={[0, 0, -0.15]} castShadow>
-                        <cylinderGeometry args={[0.075, 0.065, 0.42, 6]} />
-                        <meshStandardMaterial color="#c9ae8c" roughness={0.85} flatShading />
-                    </mesh>
-                </group>
-
-                {/* Cross-Body Strap & Left-Hip Leather Satchel Bag (Matches Home Screen.jpg) */}
-                <group ref={satchelRef}>
-                    <mesh
-                        position={[0, 1.04, 0]}
-                        rotation={[0, 0, -0.62]}
-                        castShadow
-                    >
-                        <torusGeometry args={[0.28, 0.028, 5, 14]} />
-                        <meshStandardMaterial color="#593a28" roughness={0.8} flatShading />
-                    </mesh>
-                    <group position={[-0.27, 0.78, -0.06]} rotation={[0.08, 0.2, 0.12]}>
-                        <mesh castShadow>
-                            <boxGeometry args={[0.18, 0.24, 0.28]} />
-                            <meshStandardMaterial color="#8f5d3c" roughness={0.8} flatShading />
-                        </mesh>
-                        <mesh position={[0, 0.06, 0.01]} castShadow>
-                            <boxGeometry args={[0.19, 0.12, 0.29]} />
-                            <meshStandardMaterial color="#73482d" roughness={0.82} flatShading />
-                        </mesh>
-                    </group>
-                </group>
-
-                {/* Stylized Head & Layered Low-Poly Dark Hair */}
-                <group ref={headRef} position={[0, 1.54, 0]}>
-                    <mesh castShadow>
-                        <icosahedronGeometry args={[0.19, 1]} />
-                        <meshStandardMaterial color="#e6bda3" roughness={0.75} flatShading />
-                    </mesh>
-                    {/* Sculpted Spiky Low-Poly Dark Espresso Hair */}
-                    <mesh position={[0, 0.06, -0.02]} castShadow>
-                        <icosahedronGeometry args={[0.22, 1]} />
-                        <meshStandardMaterial color="#362826" roughness={0.85} flatShading />
-                    </mesh>
-                    <mesh position={[-0.12, 0.08, -0.06]} rotation={[0.3, 0, 0.5]} castShadow>
-                        <coneGeometry args={[0.1, 0.22, 5]} />
-                        <meshStandardMaterial color="#362826" roughness={0.85} flatShading />
-                    </mesh>
-                    <mesh position={[0.12, 0.08, -0.06]} rotation={[0.3, 0, -0.5]} castShadow>
-                        <coneGeometry args={[0.1, 0.22, 5]} />
-                        <meshStandardMaterial color="#362826" roughness={0.85} flatShading />
-                    </mesh>
-                    <mesh position={[0, 0.14, -0.1]} rotation={[-0.4, 0, 0]} castShadow>
-                        <coneGeometry args={[0.11, 0.24, 5]} />
-                        <meshStandardMaterial color="#2b1f1e" roughness={0.85} flatShading />
-                    </mesh>
-                </group>
-            </group>
+            <ExplorerModelMesh archetype={characterModel} rig={rigRefs} />
         </group>
     );
 };

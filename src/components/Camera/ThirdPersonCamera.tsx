@@ -15,61 +15,153 @@ export const ThirdPersonCamera: React.FC = () => {
     const { gl } = useThree();
     const phase = useGameStore((state) => state.phase);
     const activeModal = useGameStore((state) => state.activeModal);
+    const setPointerLocked = useGameStore((state) => state.setPointerLocked);
+    const setAltCursorMode = useGameStore((state) => state.setAltCursorMode);
 
-    const isDragging = useRef(false);
-    const currentPivot = useRef(new THREE.Vector3(0, 1.5, 7.5));
-    const currentLookAt = useRef(new THREE.Vector3(0, 1.5, 3.0));
+    const currentPivot = useRef(new THREE.Vector3(0, 1.55, 7.5));
+    const currentLookAt = useRef(new THREE.Vector3(0, 1.55, 3.0));
     const currentDistance = useRef(playerTelemetry.cameraDistance);
+    const lastClientPos = useRef<{ x: number; y: number } | null>(null);
+    const isAltHeldRef = useRef(false);
 
     useEffect(() => {
         const dom = gl.domElement;
 
-        const onMouseDown = (e: MouseEvent) => {
-            if (phase !== 'exploring' || activeModal !== 'none') return;
-            if (e.button === 0 || e.button === 2) {
-                isDragging.current = true;
+        // 1. Engage Pointer Lock on Canvas Click during normal exploration
+        const onCanvasClick = () => {
+            const state = useGameStore.getState();
+            if (
+                state.phase === 'exploring' &&
+                state.activeModal === 'none' &&
+                !isAltHeldRef.current &&
+                document.pointerLockElement !== dom
+            ) {
+                try {
+                    dom.requestPointerLock?.();
+                } catch {
+                    // Gracefully ignore if browser blocks automatic lock
+                }
             }
         };
 
-        const onMouseUp = () => {
-            isDragging.current = false;
+        const onPointerLockChange = () => {
+            const locked = document.pointerLockElement === dom;
+            setPointerLocked(locked);
+            lastClientPos.current = null;
         };
 
-        const onMouseMove = (e: MouseEvent) => {
-            if (phase !== 'exploring' || activeModal !== 'none') return;
-            const pointerLocked = document.pointerLockElement === dom;
-            if (!isDragging.current && !pointerLocked) return;
+        // 2. Alt Interaction Mode: Hold Alt to release lock & show Botanical SVG Cursor
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
+                e.preventDefault();
+                if (!isAltHeldRef.current) {
+                    isAltHeldRef.current = true;
+                    setAltCursorMode(true);
+                    lastClientPos.current = null;
+                    if (document.pointerLockElement === dom) {
+                        try {
+                            document.exitPointerLock?.();
+                        } catch {
+                            // Ignore
+                        }
+                    }
+                }
+            }
+        };
 
-            const sensitivity = 0.0032;
-            playerTelemetry.cameraYaw -= e.movementX * sensitivity;
+        const onKeyUp = (e: KeyboardEvent) => {
+            if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
+                e.preventDefault();
+                isAltHeldRef.current = false;
+                setAltCursorMode(false);
+                lastClientPos.current = null;
+            }
+        };
+
+        const onWindowBlur = () => {
+            isAltHeldRef.current = false;
+            setAltCursorMode(false);
+            lastClientPos.current = null;
+        };
+
+        // 3. Automatic Mouse-Look without holding Left-Click
+        const onMouseMove = (e: MouseEvent) => {
+            const state = useGameStore.getState();
+            if (
+                state.phase !== 'exploring' ||
+                state.activeModal !== 'none' ||
+                isAltHeldRef.current
+            ) {
+                lastClientPos.current = null;
+                return;
+            }
+
+            const sensitivity = 0.0029;
+            let dx = 0;
+            let dy = 0;
+
+            if (document.pointerLockElement === dom) {
+                dx = e.movementX;
+                dy = e.movementY;
+            } else {
+                // Fallback automatic mouse-look before pointer lock is captured
+                if (lastClientPos.current !== null) {
+                    dx = e.clientX - lastClientPos.current.x;
+                    dy = e.clientY - lastClientPos.current.y;
+                }
+                lastClientPos.current = { x: e.clientX, y: e.clientY };
+            }
+
+            // Guard against browser pointer-lock attachment spikes
+            if (Math.abs(dx) > 280 || Math.abs(dy) > 280) return;
+
+            playerTelemetry.cameraYaw -= dx * sensitivity;
             playerTelemetry.cameraPitch = THREE.MathUtils.clamp(
-                playerTelemetry.cameraPitch + e.movementY * sensitivity,
+                playerTelemetry.cameraPitch + dy * sensitivity,
                 MIN_PITCH,
                 MAX_PITCH
             );
         };
 
         const onWheel = (e: WheelEvent) => {
-            if (phase !== 'exploring' || activeModal !== 'none') return;
+            const state = useGameStore.getState();
+            if (state.phase !== 'exploring' || state.activeModal !== 'none') return;
             playerTelemetry.cameraDistance = THREE.MathUtils.clamp(
                 playerTelemetry.cameraDistance + e.deltaY * 0.004,
-                2.8,
+                2.6,
                 MAX_DISTANCE
             );
         };
 
-        dom.addEventListener('mousedown', onMouseDown);
-        window.addEventListener('mouseup', onMouseUp);
+        dom.addEventListener('click', onCanvasClick);
+        document.addEventListener('pointerlockchange', onPointerLockChange);
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        window.addEventListener('blur', onWindowBlur);
         window.addEventListener('mousemove', onMouseMove);
         dom.addEventListener('wheel', onWheel, { passive: true });
 
         return () => {
-            dom.removeEventListener('mousedown', onMouseDown);
-            window.removeEventListener('mouseup', onMouseUp);
+            dom.removeEventListener('click', onCanvasClick);
+            document.removeEventListener('pointerlockchange', onPointerLockChange);
+            window.removeEventListener('keydown', onKeyDown);
+            window.removeEventListener('keyup', onKeyUp);
+            window.removeEventListener('blur', onWindowBlur);
             window.removeEventListener('mousemove', onMouseMove);
             dom.removeEventListener('wheel', onWheel);
         };
-    }, [gl, phase, activeModal]);
+    }, [gl, setPointerLocked, setAltCursorMode]);
+
+    // Automatically release pointer lock if a modal (like Memory Echo card) opens
+    useEffect(() => {
+        if (activeModal !== 'none' && document.pointerLockElement) {
+            try {
+                document.exitPointerLock?.();
+            } catch {
+                // Ignore
+            }
+        }
+    }, [activeModal]);
 
     useFrame((state, rawDelta) => {
         if (phase !== 'exploring') return;
@@ -77,26 +169,31 @@ export const ThirdPersonCamera: React.FC = () => {
 
         const [px, py, pz] = playerTelemetry.position;
 
-        // 1. Smoothly interpolate the over-the-shoulder pivot point above the player
-        const desiredPivot = new THREE.Vector3(px, py + 1.58, pz);
-        currentPivot.current.lerp(desiredPivot, Math.min(1, delta * 12));
+        // 1. Smoothly follow character shoulder/head pivot
+        const desiredPivot = new THREE.Vector3(px, py + 1.56, pz);
+        currentPivot.current.lerp(desiredPivot, Math.min(1, delta * 13));
 
-        // 2. Compute ideal spherical camera offset from yaw & pitch
+        // 2. Spherical camera position from yaw & pitch
         const yaw = playerTelemetry.cameraYaw;
         const pitch = playerTelemetry.cameraPitch;
         const desiredDist = playerTelemetry.cameraDistance;
 
-        const dirX = Math.sin(yaw) * Math.cos(pitch);
-        const dirY = Math.sin(pitch);
-        const dirZ = Math.cos(yaw) * Math.cos(pitch);
-        const offsetDir = new THREE.Vector3(dirX, dirY, dirZ).normalize();
+        const offsetDir = new THREE.Vector3(
+            Math.sin(yaw) * Math.cos(pitch),
+            Math.sin(pitch),
+            Math.cos(yaw) * Math.cos(pitch)
+        ).normalize();
 
         const idealCamPos = currentPivot.current
             .clone()
             .addScaledVector(offsetDir, desiredDist);
 
-        // 3. Multi-Probe Obstacle Raycast (Center + Left/Right/Up/Down Whiskers)
-        const rightWhisker = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)).multiplyScalar(0.28);
+        // 3. Multi-Probe Obstacle Collision (Center + Left/Right/Up Whiskers)
+        const rightWhisker = new THREE.Vector3(
+            Math.cos(yaw),
+            0,
+            -Math.sin(yaw)
+        ).multiplyScalar(0.28);
         const upWhisker = new THREE.Vector3(0, 0.25, 0);
 
         const fCenter = collisionManager.computeSafeCameraFraction(
@@ -120,21 +217,19 @@ export const ThirdPersonCamera: React.FC = () => {
             0.32
         );
 
-        // Weighted minimum fraction so grazing a tree trunk pulls the camera in smoothly
         const safeFraction = Math.min(
             fCenter,
             (fCenter + Math.min(fLeft, fRight, fUp)) * 0.5
         );
         let targetSafeDist = Math.max(MIN_DISTANCE, desiredDist * safeFraction);
 
-        // 4. Terrain Slope & Ground Collision Prevention (Multi-point sample along camera ray)
-        for (const sampleT of [0.4, 0.7, 1.0]) {
+        // 4. Terrain Slope & Ground Collision Prevention
+        for (const sampleT of [0.35, 0.68, 1.0]) {
             const testPos = currentPivot.current
                 .clone()
                 .addScaledVector(offsetDir, targetSafeDist * sampleT);
             const groundH = getGardenTerrainHeight(testPos.x, testPos.z) + 0.52;
             if (testPos.y < groundH && sampleT === 1.0) {
-                // Pull camera closer or lift slightly if terrain slope rises behind player
                 const dyNeeded = groundH - currentPivot.current.y;
                 if (offsetDir.y < 0.05) {
                     targetSafeDist = Math.max(MIN_DISTANCE, targetSafeDist * 0.78);
@@ -147,10 +242,9 @@ export const ThirdPersonCamera: React.FC = () => {
             }
         }
 
-        // 5. Asymmetric Distance Interpolation:
-        // Pull in fast when obstructed (no clipping), restore gently when clear (no snapping)
+        // 5. Smooth Pull-In on Obstruction & Gentle Restore When Clear
         const distLerpSpeed =
-            targetSafeDist < currentDistance.current ? 18.0 : 4.5;
+            targetSafeDist < currentDistance.current ? 18.5 : 4.8;
         currentDistance.current = THREE.MathUtils.lerp(
             currentDistance.current,
             targetSafeDist,
@@ -161,23 +255,21 @@ export const ThirdPersonCamera: React.FC = () => {
             .clone()
             .addScaledVector(offsetDir, currentDistance.current);
 
-        // Final hard guarantee that camera never enters the terrain mesh
         const camGroundFloor =
-            getGardenTerrainHeight(finalCamPos.x, finalCamPos.z) + 0.45;
+            getGardenTerrainHeight(finalCamPos.x, finalCamPos.z) + 0.46;
         if (finalCamPos.y < camGroundFloor) {
             finalCamPos.y = camGroundFloor;
         }
 
         state.camera.position.copy(finalCamPos);
 
-        // Look slightly ahead of the character's shoulder for cinematic framing
         const forwardAim = new THREE.Vector3(
-            -Math.sin(yaw) * 1.6,
-            0.25,
-            -Math.cos(yaw) * 1.6
+            -Math.sin(yaw) * 1.45,
+            0.22,
+            -Math.cos(yaw) * 1.45
         );
         const desiredLook = currentPivot.current.clone().add(forwardAim);
-        currentLookAt.current.lerp(desiredLook, Math.min(1, delta * 14));
+        currentLookAt.current.lerp(desiredLook, Math.min(1, delta * 15));
         state.camera.lookAt(currentLookAt.current);
     });
 

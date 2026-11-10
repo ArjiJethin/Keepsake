@@ -13,9 +13,6 @@ import { MemoryPedestals } from '../../components/Memory/MemoryPedestals';
 import { collisionManager } from '../../systems/Collision/collisionSystem';
 import { playerTelemetry } from '../../store/useGameStore';
 
-/**
- * Left Stone Archway Ruin with Carved Masonry & Hanging Ivy
- */
 const StoneArchwayRuin: React.FC<{
     position: [number, number, number];
     rotationY?: number;
@@ -115,9 +112,6 @@ const StoneArchwayRuin: React.FC<{
     );
 };
 
-/**
- * Giant Low-Poly Sakura Tree (Hero Landmark on Right Knoll)
- */
 const GiantSakuraTree: React.FC<{ position: [number, number, number] }> = ({
     position,
 }) => {
@@ -239,27 +233,96 @@ const GiantSakuraTree: React.FC<{ position: [number, number, number] }> = ({
 };
 
 /**
- * Sky-Anchored Horizon Vista (Floating Waterfall Island, Sunset Sun, Distant Peaks & Drifting Petals)
+ * FIXED WORLD-SPACE BLOSSOM PETALS:
+ * Petals exist strictly in independent world coordinates (wx, wy, wz) — never parented
+ * or locked to the player's position. Each petal drifts with gentle wind & gravity,
+ * and recycles individually when touching the ground or drifting outside a 32m radius.
  */
-const HorizonVista: React.FC = () => {
-    const vistaRef = useRef<THREE.Group>(null);
-    const islandRef = useRef<THREE.Group>(null);
-    const petalsRef = useRef<THREE.Group>(null);
+const WorldSpaceBlossomPetals: React.FC = () => {
+    const instancedRef = useRef<THREE.InstancedMesh>(null);
+    const dummy = useMemo(() => new THREE.Object3D(), []);
+    const petalGeo = useMemo(() => new THREE.OctahedronGeometry(1, 0), []);
 
-    const rockGeo = useMemo(
-        () => createSculptedFacetedGeometry(6.2, 1, [1.45, 0.95, 1.1], 0.2, 77),
+    const particles = useMemo(
+        () =>
+            Array.from({ length: 24 }).map((_, i) => ({
+                wx: (seededRandom(i * 13 + 1) - 0.5) * 44,
+                wy: 1.5 + seededRandom(i * 29 + 2) * 8.5,
+                wz: (seededRandom(i * 47 + 3) - 0.5) * 44,
+                vx: -0.55 - seededRandom(i * 61) * 0.35,
+                vy: -0.62 - seededRandom(i * 73) * 0.28,
+                vz: 0.15 + (seededRandom(i * 89) - 0.5) * 0.35,
+                phase: seededRandom(i * 97) * Math.PI * 2,
+                rotSpeedX: 0.9 + seededRandom(i * 103) * 1.1,
+                rotSpeedY: 0.7 + seededRandom(i * 109) * 1.0,
+            })),
         []
     );
 
-    const petalData = useMemo(
-        () =>
-            Array.from({ length: 32 }).map((_, i) => ({
-                x: (seededRandom(i * 11) - 0.5) * 22,
-                y: 1.5 + seededRandom(i * 23) * 7,
-                z: (seededRandom(i * 37) - 0.5) * 22,
-                speed: 0.45 + seededRandom(i * 41) * 0.45,
-                phase: seededRandom(i * 59) * Math.PI * 2,
-            })),
+    useFrame(({ clock }, rawDelta) => {
+        if (!instancedRef.current) return;
+        const delta = Math.min(rawDelta, 0.05);
+        const t = clock.getElapsedTime();
+        const [px, , pz] = playerTelemetry.position;
+        const maxRadius = 28;
+
+        for (let i = 0; i < particles.length; i++) {
+            const p = particles[i];
+
+            // Update strictly in world space with gentle sinusoidal breeze flutter
+            p.wx += (p.vx + Math.sin(t * 1.4 + p.phase) * 0.28) * delta;
+            p.wy += (p.vy + Math.cos(t * 2.1 + p.phase) * 0.12) * delta;
+            p.wz += (p.vz + Math.cos(t * 1.2 + p.phase) * 0.24) * delta;
+
+            const groundY = getGardenTerrainHeight(p.wx, p.wz);
+
+            // Recycle smoothly high up if petal touches ground
+            if (p.wy < groundY + 0.15) {
+                p.wy = groundY + 7.5 + seededRandom(i + t) * 3.5;
+                p.wx = px + (seededRandom(i * 19 + t) - 0.5) * 38;
+                p.wz = pz + (seededRandom(i * 31 + t) - 0.5) * 38;
+            }
+
+            // Wrap individual petal at perimeter boundary so it never moves with the player
+            const dx = p.wx - px;
+            const dz = p.wz - pz;
+            if (dx > maxRadius) p.wx -= maxRadius * 2;
+            else if (dx < -maxRadius) p.wx += maxRadius * 2;
+
+            if (dz > maxRadius) p.wz -= maxRadius * 2;
+            else if (dz < -maxRadius) p.wz += maxRadius * 2;
+
+            dummy.position.set(p.wx, p.wy, p.wz);
+            dummy.rotation.set(
+                t * p.rotSpeedX + p.phase,
+                t * p.rotSpeedY + p.phase,
+                Math.sin(t + p.phase) * 0.5
+            );
+            dummy.scale.set(0.085, 0.022, 0.052);
+            dummy.updateMatrix();
+            instancedRef.current.setMatrixAt(i, dummy.matrix);
+        }
+
+        instancedRef.current.instanceMatrix.needsUpdate = true;
+    });
+
+    return (
+        <instancedMesh
+            ref={instancedRef}
+            args={[petalGeo, undefined, particles.length]}
+            frustumCulled={false}
+        >
+            <meshBasicMaterial color="#f5b8b0" transparent opacity={0.86} />
+        </instancedMesh>
+    );
+};
+
+const HorizonVista: React.FC = () => {
+    const vistaRef = useRef<THREE.Group>(null);
+    const islandRef = useRef<THREE.Group>(null);
+
+    const rockGeo = useMemo(
+        () => createSculptedFacetedGeometry(6.2, 1, [1.45, 0.95, 1.1], 0.2, 77),
         []
     );
 
@@ -268,103 +331,75 @@ const HorizonVista: React.FC = () => {
         const px = playerTelemetry.position[0];
         const pz = playerTelemetry.position[2];
 
-        // Keep distant horizon mountains & floating island anchored at infinity
         if (vistaRef.current) {
-            vistaRef.current.position.set(px * 0.88, 0, pz * 0.88);
+            vistaRef.current.position.set(px * 0.92, 0, pz * 0.92);
         }
         if (islandRef.current) {
             islandRef.current.position.y = 8.2 + Math.sin(t * 0.7) * 0.28;
         }
-        if (petalsRef.current) {
-            petalsRef.current.position.set(px, 0, pz);
-            petalsRef.current.children.forEach((child, idx) => {
-                const p = petalData[idx];
-                const cycle = (t * p.speed + p.phase) % 8;
-                child.position.x = p.x - cycle * 0.9 + Math.sin(t + p.phase) * 0.35;
-                child.position.y = p.y - cycle * 0.65;
-                if (child.position.y < 0.3) child.position.y += 6.5;
-                child.position.z = p.z;
-                child.rotation.x = t * 1.4 + p.phase;
-                child.rotation.y = t * 1.1 + p.phase;
-            });
-        }
     });
 
     return (
-        <>
-            <group ref={vistaRef}>
-                {/* Distant Floating Waterfall Island & Sunset Sun */}
-                <group position={[-15.5, 0, -52]}>
-                    <mesh position={[-6.8, 9.2, -16]}>
-                        <circleGeometry args={[4.8, 24]} />
-                        <meshBasicMaterial color="#ffebc2" fog={false} />
+        <group ref={vistaRef}>
+            <group position={[-15.5, 0, -52]}>
+                <mesh position={[-6.8, 9.2, -16]}>
+                    <circleGeometry args={[4.8, 24]} />
+                    <meshBasicMaterial color="#ffebc2" fog={false} />
+                </mesh>
+                <mesh position={[-6.8, 9.2, -16.2]}>
+                    <circleGeometry args={[7.8, 24]} />
+                    <meshBasicMaterial
+                        color="#f7c59f"
+                        transparent
+                        opacity={0.38}
+                        fog={false}
+                    />
+                </mesh>
+
+                <group ref={islandRef} position={[0, 8.2, 0]}>
+                    <mesh geometry={rockGeo} position={[0, -1.8, 0]}>
+                        <meshStandardMaterial color="#8e7884" roughness={0.9} flatShading />
                     </mesh>
-                    <mesh position={[-6.8, 9.2, -16.2]}>
-                        <circleGeometry args={[7.8, 24]} />
-                        <meshBasicMaterial
-                            color="#f7c59f"
-                            transparent
-                            opacity={0.38}
-                            fog={false}
+                    <mesh position={[0, -5.2, 0]} rotation={[Math.PI, 0.4, 0]}>
+                        <coneGeometry args={[5.2, 6.5, 7]} />
+                        <meshStandardMaterial color="#7d6a76" roughness={0.9} flatShading />
+                    </mesh>
+                    <mesh position={[0, 0.6, 0]}>
+                        <cylinderGeometry args={[7.8, 7.2, 1.1, 9]} />
+                        <meshStandardMaterial
+                            color={THEME.colors.meadowBase}
+                            roughness={0.9}
+                            flatShading
                         />
                     </mesh>
-
-                    <group ref={islandRef} position={[0, 8.2, 0]}>
-                        <mesh geometry={rockGeo} position={[0, -1.8, 0]}>
-                            <meshStandardMaterial color="#8e7884" roughness={0.9} flatShading />
-                        </mesh>
-                        <mesh position={[0, -5.2, 0]} rotation={[Math.PI, 0.4, 0]}>
-                            <coneGeometry args={[5.2, 6.5, 7]} />
-                            <meshStandardMaterial color="#7d6a76" roughness={0.9} flatShading />
-                        </mesh>
-                        <mesh position={[0, 0.6, 0]}>
-                            <cylinderGeometry args={[7.8, 7.2, 1.1, 9]} />
-                            <meshStandardMaterial
-                                color={THEME.colors.meadowBase}
-                                roughness={0.9}
-                                flatShading
-                            />
-                        </mesh>
-                        <mesh position={[1.2, -7.2, 3.8]}>
-                            <planeGeometry args={[1.35, 15.5]} />
-                            <meshBasicMaterial
-                                color="#faead7"
-                                transparent
-                                opacity={0.65}
-                                side={THREE.DoubleSide}
-                            />
-                        </mesh>
-                    </group>
+                    <mesh position={[1.2, -7.2, 3.8]}>
+                        <planeGeometry args={[1.35, 15.5]} />
+                        <meshBasicMaterial
+                            color="#faead7"
+                            transparent
+                            opacity={0.65}
+                            side={THREE.DoubleSide}
+                        />
+                    </mesh>
                 </group>
-
-                {/* Distant Low-Poly Horizon Mountains */}
-                {[
-                    { pos: [-45, -2, -75], radius: 26, height: 28, sides: 7, color: THEME.colors.mountainFar },
-                    { pos: [-18, -2, -82], radius: 22, height: 22, sides: 6, color: THEME.colors.mountainFar },
-                    { pos: [16, -2, -78], radius: 28, height: 26, sides: 7, color: THEME.colors.mountainFar },
-                    { pos: [42, -2, -68], radius: 26, height: 30, sides: 6, color: THEME.colors.mountainMid },
-                ].map((m, idx) => (
-                    <mesh
-                        key={`mt-${idx}`}
-                        position={m.pos as [number, number, number]}
-                        rotation={[0, idx * 0.8, 0]}
-                    >
-                        <coneGeometry args={[m.radius, m.height, m.sides]} />
-                        <meshStandardMaterial color={m.color} roughness={0.95} flatShading />
-                    </mesh>
-                ))}
             </group>
 
-            {/* 3D Floating Sakura Petals around Player */}
-            <group ref={petalsRef}>
-                {petalData.map((_, i) => (
-                    <mesh key={`petal3d-${i}`} scale={[0.1, 0.03, 0.06]}>
-                        <octahedronGeometry args={[1, 0]} />
-                        <meshBasicMaterial color="#f5b8b0" />
-                    </mesh>
-                ))}
-            </group>
-        </>
+            {[
+                { pos: [-45, -2, -75], radius: 26, height: 28, sides: 7, color: THEME.colors.mountainFar },
+                { pos: [-18, -2, -82], radius: 22, height: 22, sides: 6, color: THEME.colors.mountainFar },
+                { pos: [16, -2, -78], radius: 28, height: 26, sides: 7, color: THEME.colors.mountainFar },
+                { pos: [42, -2, -68], radius: 26, height: 30, sides: 6, color: THEME.colors.mountainMid },
+            ].map((m, idx) => (
+                <mesh
+                    key={`mt-${idx}`}
+                    position={m.pos as [number, number, number]}
+                    rotation={[0, idx * 0.8, 0]}
+                >
+                    <coneGeometry args={[m.radius, m.height, m.sides]} />
+                    <meshStandardMaterial color={m.color} roughness={0.95} flatShading />
+                </mesh>
+            ))}
+        </group>
     );
 };
 
@@ -372,10 +407,8 @@ export const GardenEnvironment: React.FC = () => {
     const archY = useMemo(() => getGardenTerrainHeight(-6.8, -3.5), []);
     const sakuraY = useMemo(() => getGardenTerrainHeight(6.2, 2.2), []);
 
-    // Register static hero landmark colliders (Sakura Trunk, Archway Pillars, Memory Pedestals)
     useEffect(() => {
         collisionManager.setStaticColliders([
-            // Giant Sakura Tree Trunk
             {
                 id: 'hero_sakura_trunk',
                 x: 6.2,
@@ -385,7 +418,6 @@ export const GardenEnvironment: React.FC = () => {
                 height: 8.5,
                 blocksCamera: true,
             },
-            // Stone Archway Left & Right Pillars
             {
                 id: 'arch_pillar_left',
                 x: -6.8 - 1.75 * Math.cos(0.34),
@@ -404,31 +436,24 @@ export const GardenEnvironment: React.FC = () => {
                 height: 5.5,
                 blocksCamera: true,
             },
-            // Memory Pedestal Colliders
-            { id: 'ped_1', x: 2.35, y: getGardenTerrainHeight(2.35, 4.8), z: 4.8, radius: 1.15, height: 2.2, blocksCamera: false },
-            { id: 'ped_2', x: -3.6, y: getGardenTerrainHeight(-3.6, 2.2), z: 2.2, radius: 1.05, height: 2.2, blocksCamera: false },
-            { id: 'ped_3', x: 1.9, y: getGardenTerrainHeight(1.9, -4.8), z: -4.8, radius: 0.95, height: 2.2, blocksCamera: false },
-            { id: 'ped_4', x: -2.4, y: getGardenTerrainHeight(-2.4, -6.5), z: -6.5, radius: 0.95, height: 2.2, blocksCamera: false },
+            { id: 'ped_1', x: 2.35, y: getGardenTerrainHeight(2.35, 4.8), z: 4.8, radius: 0.85, height: 2.0, blocksCamera: false },
+            { id: 'ped_2', x: -3.6, y: getGardenTerrainHeight(-3.6, 2.2), z: 2.2, radius: 0.85, height: 2.0, blocksCamera: false },
+            { id: 'ped_3', x: 1.9, y: getGardenTerrainHeight(1.9, -4.8), z: -4.8, radius: 0.85, height: 2.0, blocksCamera: false },
+            { id: 'ped_4', x: -2.4, y: getGardenTerrainHeight(-2.4, -6.5), z: -6.5, radius: 0.85, height: 2.0, blocksCamera: false },
         ]);
     }, [archY, sakuraY]);
 
     return (
         <group>
-            {/* Infinite Dynamic Chunk-Based Terrain & Natural Biome */}
             <ChunkedTerrain />
-
-            {/* Sanctuary Hero Landmarks */}
             <StoneArchwayRuin
                 position={[-6.8, archY - 0.1, -3.5]}
                 rotationY={0.34}
                 scale={1.08}
             />
             <GiantSakuraTree position={[6.2, sakuraY - 0.15, 2.2]} />
-
-            {/* Horizon Vista & Drifting Petals */}
             <HorizonVista />
-
-            {/* Interactive Stone Memory Pedestals */}
+            <WorldSpaceBlossomPetals />
             <MemoryPedestals />
         </group>
     );

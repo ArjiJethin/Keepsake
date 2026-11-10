@@ -1,23 +1,61 @@
 // src/components/UI/GameHUD.tsx
-import React from 'react';
-import { BookOpen, Users, Settings, Sparkles, X, MapPin, Calendar } from 'lucide-react';
+import React, { useEffect } from 'react';
+import {
+    BookOpen,
+    UserCheck,
+    Settings,
+    Sparkles,
+    X,
+    MapPin,
+    Calendar,
+    Volume2,
+    Sprout,
+    Compass,
+} from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
-import { GARDEN_MEMORIES } from '../Memory/MemoryPedestals';
 import './GameHUD.css';
 
 export const GameHUD: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
     const nearbyMemory = useGameStore((state) => state.nearbyMemory);
     const activeMemory = useGameStore((state) => state.activeMemory);
+    const persistentMemories = useGameStore((state) => state.persistentMemories);
     const openMemory = useGameStore((state) => state.openMemory);
     const closeMemory = useGameStore((state) => state.closeMemory);
+    const advanceMemoryGrowth = useGameStore((state) => state.advanceMemoryGrowth);
     const discoveredIds = useGameStore((state) => state.discoveredIds);
-    const quality = useGameStore((state) => state.quality);
-    const toggleQuality = useGameStore((state) => state.toggleQuality);
+    const characterModel = useGameStore((state) => state.characterModel);
+    const toggleCharacterModel = useGameStore(
+        (state) => state.toggleCharacterModel
+    );
+    const isAltCursorMode = useGameStore((state) => state.isAltCursorMode);
+    const isPointerLocked = useGameStore((state) => state.isPointerLocked);
+    const nearbyZone = useGameStore((state) => state.nearbyZone);
+    const activeChunkCoord = useGameStore((state) => state.activeChunkCoord);
     const setPhase = useGameStore((state) => state.setPhase);
     const setIntroStage = useGameStore((state) => state.setIntroStage);
 
+    // Allow pressing 'C' to toggle between Female & Male Explorer anytime
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (
+                e.code === 'KeyC' &&
+                phase === 'exploring' &&
+                !useGameStore.getState().activeMemory
+            ) {
+                toggleCharacterModel();
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [phase, toggleCharacterModel]);
+
     if (phase !== 'exploring') return null;
+
+    // Keep activeMemory synchronized with latest growthStage from persistentMemories
+    const currentMemoryData = activeMemory
+        ? persistentMemories.find((m) => m.id === activeMemory.id) || activeMemory
+        : null;
 
     const handleReplayIntro = () => {
         closeMemory();
@@ -27,38 +65,80 @@ export const GameHUD: React.FC = () => {
 
     return (
         <div className="keepsake-hud-layer">
-            {/* Top-Left Keepsake Brand Logo (Matches Home Screen.jpg) */}
+            {/* Top-Left Keepsake Brand Logo & World Status */}
             <div className="hud-top-left">
-                <div className="hud-brand-logo" onClick={handleReplayIntro} title="Click to replay intro sequence">
+                <div
+                    className="hud-brand-logo"
+                    onClick={handleReplayIntro}
+                    title="Click to replay brushstroke intro sequence"
+                >
                     <span className="hud-brand-text">Keepsake</span>
-                    <svg className="hud-brand-leaf" viewBox="0 0 32 32" width="22" height="22">
+                    <svg
+                        className="hud-brand-leaf"
+                        viewBox="0 0 32 32"
+                        width="22"
+                        height="22"
+                    >
                         <path
                             d="M6,26 C10,12 20,6 30,4 C26,16 18,24 6,26 Z"
                             fill="#f7ecda"
                         />
                     </svg>
                 </div>
-                <div className="hud-discovery-pill">
-                    <span>Memories Awoken: {discoveredIds.length} / {GARDEN_MEMORIES.length}</span>
+
+                <div className="hud-pills-row">
+                    <div className="hud-discovery-pill">
+                        <span>
+                            Memories Awoken: {discoveredIds.length} /{' '}
+                            {persistentMemories.length}
+                        </span>
+                    </div>
+                    <div className="hud-discovery-pill hud-chunk-pill">
+                        <Compass size={13} />
+                        <span>
+                            Chunk ({activeChunkCoord[0]}, {activeChunkCoord[1]})
+                        </span>
+                    </div>
                 </div>
             </div>
+
+            {/* Top-Center Landmark Zone Banner (Memory Trees, Reflection Pond, Hidden Pathways) */}
+            {nearbyZone && !currentMemoryData && (
+                <div className="hud-zone-banner">
+                    <span className="hud-zone-type">
+                        {nearbyZone.zoneType.replace('_', ' ').toUpperCase()}
+                    </span>
+                    <h3 className="hud-zone-title">{nearbyZone.name}</h3>
+                    <p className="hud-zone-desc">{nearbyZone.description}</p>
+                </div>
+            )}
 
             {/* Top-Right Circular Parchment Action Buttons */}
             <div className="hud-top-right">
                 <button
+                    className="hud-explorer-switch-pill"
+                    onClick={toggleCharacterModel}
+                    title="Switch Playable Explorer (Shortcut: C)"
+                >
+                    <UserCheck size={16} />
+                    <span>
+                        {characterModel === 'female'
+                            ? 'Explorer: Female (F)'
+                            : 'Explorer: Male (M)'}
+                    </span>
+                    <kbd className="hud-mini-key">C</kbd>
+                </button>
+
+                <button
                     className="hud-circle-btn"
-                    onClick={() => openMemory(GARDEN_MEMORIES[0])}
-                    title="Memory Journal"
+                    onClick={() =>
+                        openMemory(nearbyMemory || persistentMemories[0])
+                    }
+                    title="Open Memory Journal"
                 >
                     <BookOpen size={18} />
                 </button>
-                <button
-                    className="hud-circle-btn"
-                    onClick={toggleQuality}
-                    title={`Graphics Quality: ${quality.toUpperCase()}`}
-                >
-                    <Users size={18} />
-                </button>
+
                 <button
                     className="hud-circle-btn"
                     onClick={handleReplayIntro}
@@ -68,8 +148,8 @@ export const GameHUD: React.FC = () => {
                 </button>
             </div>
 
-            {/* Contextual Proximity Prompt ("Remember? [E]") matching Home Screen.jpg */}
-            {nearbyMemory && !activeMemory && (
+            {/* Contextual Proximity Prompt ("Remember? [E]") */}
+            {nearbyMemory && !currentMemoryData && (
                 <div className="hud-proximity-prompt">
                     <button
                         className="remember-prompt-pill"
@@ -78,11 +158,13 @@ export const GameHUD: React.FC = () => {
                         <span className="remember-prompt-text">Remember?</span>
                         <kbd className="remember-prompt-key">E</kbd>
                     </button>
-                    <span className="remember-prompt-subtitle">{nearbyMemory.title}</span>
+                    <span className="remember-prompt-subtitle">
+                        {nearbyMemory.title} ({nearbyMemory.growthStage?.toUpperCase()})
+                    </span>
                 </div>
             )}
 
-            {/* Bottom-Left Movement Control Guide (Matches Home Screen.jpg) */}
+            {/* Bottom-Left Movement & Camera Control Guide */}
             <div className="hud-bottom-left-controls">
                 <div className="control-row">
                     <div className="wasd-cluster">
@@ -100,31 +182,44 @@ export const GameHUD: React.FC = () => {
 
                 <div className="control-row">
                     <span className="mouse-icon-badge" />
-                    <span className="control-label">Drag to Look / Scroll Zoom</span>
+                    <span className="control-label">
+                        {isPointerLocked
+                            ? 'Mouse Look Active (Scroll Zoom)'
+                            : 'Click Canvas to Lock Mouse Look'}
+                    </span>
+                </div>
+
+                <div className="control-row">
+                    <kbd
+                        className={`key-cap key-wide ${isAltCursorMode ? 'key-cap--active' : ''
+                            }`}
+                    >
+                        Alt
+                    </kbd>
+                    <span className="control-label">Hold for Botanical UI Cursor</span>
                 </div>
 
                 <div className="control-row">
                     <kbd className="key-cap">E</kbd>
-                    <span className="control-label">Interact</span>
+                    <span className="control-label">Awaken Memory Echo</span>
                 </div>
 
                 <div className="control-row">
                     <kbd className="key-cap key-wide">Shift</kbd>
-                    <span className="control-label">Run</span>
-                </div>
-
-                <div className="control-row">
-                    <kbd className="key-cap key-wide">Space</kbd>
+                    <span className="control-label">Sprint</span>
+                    <kbd className="key-cap key-wide" style={{ marginLeft: 4 }}>
+                        Space
+                    </kbd>
                     <span className="control-label">Jump</span>
                 </div>
             </div>
 
-            {/* Bottom-Right Main "Remember" Parchment Button */}
+            {/* Bottom-Right Main "Remember" Button */}
             <div className="hud-bottom-right">
                 <button
                     className="hud-remember-main-btn"
                     onClick={() =>
-                        openMemory(nearbyMemory || GARDEN_MEMORIES[0])
+                        openMemory(nearbyMemory || persistentMemories[0])
                     }
                 >
                     <Sparkles size={18} className="remember-flower-icon" />
@@ -132,8 +227,8 @@ export const GameHUD: React.FC = () => {
                 </button>
             </div>
 
-            {/* Memory Viewing Parchment Modal (Triggered when pressing E near a pedestal) */}
-            {activeMemory && (
+            {/* MEMORY ECHO PRESENTATION MODAL (Supports Voice, Ambient Audio, Growth & Notes) */}
+            {currentMemoryData && (
                 <div className="memory-modal-backdrop" onClick={closeMemory}>
                     <div
                         className="memory-parchment-card"
@@ -142,41 +237,74 @@ export const GameHUD: React.FC = () => {
                         <button
                             className="memory-close-btn"
                             onClick={closeMemory}
-                            aria-label="Close Memory"
+                            aria-label="Close Memory Echo"
                         >
                             <X size={20} />
                         </button>
 
                         <div className="memory-card-header">
-                            <span className="memory-category-tag">
-                                {activeMemory.category.toUpperCase()} KEEPSAKE
-                            </span>
-                            <h2 className="memory-card-title">{activeMemory.title}</h2>
-                            <p className="memory-card-subtitle">{activeMemory.subtitle}</p>
+                            <div className="memory-badges-row">
+                                <span className="memory-category-tag">
+                                    {currentMemoryData.category.toUpperCase()} ECHO
+                                </span>
+                                <span className="memory-stage-badge">
+                                    <Sprout size={13} />
+                                    Stage: {(currentMemoryData.growthStage || 'seed').toUpperCase()}
+                                </span>
+                                {currentMemoryData.importance && (
+                                    <span className="memory-importance-badge">
+                                        {currentMemoryData.importance.toUpperCase()}
+                                    </span>
+                                )}
+                            </div>
+                            <h2 className="memory-card-title">{currentMemoryData.title}</h2>
+                            <p className="memory-card-subtitle">
+                                {currentMemoryData.subtitle}
+                            </p>
                         </div>
 
-                        {/* Artistic Low-Poly Sunset Illustration Canvas Preview inside the Memory Card */}
+                        {/* Floating Memory Photograph & Echo Audio Wave Preview */}
                         <div className="memory-visual-frame">
                             <div className="memory-visual-art">
                                 <div className="memory-art-sun" />
                                 <div className="memory-art-mountains" />
                                 <div className="memory-art-meadow" />
+                                {currentMemoryData.echo?.ambientAudioLabel && (
+                                    <div className="memory-echo-audio-pill">
+                                        <Volume2 size={14} />
+                                        <span>{currentMemoryData.echo.ambientAudioLabel}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
+                        {/* Spoken Voice Echo Transcript */}
+                        {currentMemoryData.echo?.voiceTranscript && (
+                            <blockquote className="memory-voice-echo">
+                                {currentMemoryData.echo.voiceTranscript}
+                            </blockquote>
+                        )}
+
                         <div className="memory-meta-row">
                             <span className="memory-meta-item">
-                                <Calendar size={14} /> {activeMemory.date}
+                                <Calendar size={14} /> {currentMemoryData.date}
                             </span>
                             <span className="memory-meta-item">
-                                <MapPin size={14} /> {activeMemory.location}
+                                <MapPin size={14} /> {currentMemoryData.location}
                             </span>
+                            {currentMemoryData.people && (
+                                <span className="memory-meta-item">
+                                    With: {currentMemoryData.people.join(', ')}
+                                </span>
+                            )}
                         </div>
 
-                        <p className="memory-card-description">{activeMemory.description}</p>
+                        <p className="memory-card-description">
+                            {currentMemoryData.description}
+                        </p>
 
                         <div className="memory-tag-list">
-                            {activeMemory.tags.map((tag) => (
+                            {currentMemoryData.tags.map((tag) => (
                                 <span key={tag} className="memory-tag-chip">
                                     #{tag}
                                 </span>
@@ -184,6 +312,15 @@ export const GameHUD: React.FC = () => {
                         </div>
 
                         <div className="memory-card-footer">
+                            {currentMemoryData.growthStage !== 'landmark' && (
+                                <button
+                                    className="memory-nourish-btn"
+                                    onClick={() => advanceMemoryGrowth(currentMemoryData.id)}
+                                >
+                                    <Sprout size={16} />
+                                    <span>Nourish Memory Growth</span>
+                                </button>
+                            )}
                             <button className="memory-return-btn" onClick={closeMemory}>
                                 Return to the Garden
                             </button>

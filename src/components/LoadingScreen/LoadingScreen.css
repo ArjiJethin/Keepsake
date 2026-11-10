@@ -86,7 +86,6 @@
   letter-spacing: 0.01em;
 }
 
-/* Real-Time Path-Synchronized Artist Paintbrush Follower */
 .artist-paintbrush-follower {
   position: absolute;
   left: 24%;
@@ -146,11 +145,62 @@
 }
 
 .loading-lower-slot {
-  margin-top: 32px;
-  min-height: 175px;
+  margin-top: 26px;
+  min-height: 185px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.intro-interactive-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  animation: riseInSmooth 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.explorer-select-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.explorer-choice-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: rgba(52, 38, 34, 0.62);
+  border: 1px solid rgba(247, 236, 218, 0.35);
+  color: rgba(247, 236, 218, 0.82);
+  font-family: var(--font-serif);
+  font-size: 0.94rem;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: all 0.2s ease;
+}
+
+.explorer-choice-pill.active {
+  background: rgba(239, 226, 207, 0.94);
+  border-color: #ffd88a;
+  color: #3b2d26;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(255, 210, 125, 0.38);
+}
+
+.explorer-choice-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(247, 236, 218, 0.45);
+}
+
+.explorer-choice-pill.active .explorer-choice-dot {
+  background: #c67d38;
+  box-shadow: 0 0 6px #ffae42;
 }
 
 .sculpted-stone-enter-btn {
@@ -164,7 +214,6 @@
   cursor: pointer;
   filter: drop-shadow(0 12px 24px rgba(34, 21, 18, 0.5))
     drop-shadow(0 0 18px rgba(255, 215, 150, 0.25));
-  animation: riseInSmooth 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
   transition: transform 0.25s ease, filter 0.25s ease;
 }
 

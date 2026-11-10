@@ -1,6 +1,5 @@
 // src/components/LoadingScreen/LoadingScreen.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import * as THREE from 'three';
 import { useGameStore, type IntroStage } from '../../store/useGameStore';
 import './LoadingScreen.css';
 
@@ -8,76 +7,62 @@ interface GuideStrokeSpec {
     id: string;
     d: string;
     strokeWidth: number;
-    weight: number; // Relative time weight for natural calligraphy pacing
+    weight: number;
 }
 
-/**
- * Continuous Calligraphic Guide Strokes tracing the exact contours of
- * "Keepsake", the sweeping underline flourish, and the top-right leaf accent
- * inside the 920x250 SVG coordinate space.
- */
 const CALLIGRAPHY_GUIDE_STROKES: GuideStrokeSpec[] = [
-    // 1. Capital 'K' main descending stem
     {
         id: 'k-stem',
         d: 'M 225,46 C 204,88 180,142 162,196',
-        strokeWidth: 46,
+        strokeWidth: 48,
         weight: 0.11,
     },
-    // 2. Capital 'K' sweeping upper arm loop into center waist
     {
         id: 'k-upper',
         d: 'M 292,54 C 258,74 220,104 188,124',
-        strokeWidth: 44,
+        strokeWidth: 46,
         weight: 0.09,
     },
-    // 3. Capital 'K' lower leg sweeping into first 'e'
     {
         id: 'k-lower',
         d: 'M 192,122 C 218,142 246,162 278,150',
-        strokeWidth: 42,
+        strokeWidth: 44,
         weight: 0.08,
     },
-    // 4. First 'e' & second 'e' continuous cursive loop
     {
         id: 'ee-loop',
         d: 'M 282,138 C 306,110 330,106 318,136 C 304,160 342,154 364,132 C 384,108 398,116 382,144 C 370,162 404,158 422,138',
-        strokeWidth: 54,
+        strokeWidth: 56,
         weight: 0.16,
     },
-    // 5. Letter 'p' descender & bowl
     {
         id: 'p-stroke',
         d: 'M 426,122 C 414,158 400,196 392,222 C 406,178 426,118 456,120 C 480,124 472,158 438,154',
-        strokeWidth: 52,
+        strokeWidth: 54,
         weight: 0.13,
     },
-    // 6. Letters 's' and 'a' cursive wave
     {
         id: 'sa-stroke',
         d: 'M 474,146 C 498,116 526,124 514,152 C 504,166 544,154 568,126 C 594,108 604,132 586,154 C 596,158 614,150 626,136',
-        strokeWidth: 56,
+        strokeWidth: 58,
         weight: 0.15,
     },
-    // 7. Letter 'k' ascender loop & 'e' terminal
     {
         id: 'ke-stroke',
         d: 'M 634,68 C 620,108 606,144 598,162 C 618,134 652,114 662,130 C 646,146 632,148 656,156 C 682,158 712,126 696,116 C 676,114 674,156 718,144',
-        strokeWidth: 56,
+        strokeWidth: 58,
         weight: 0.14,
     },
-    // 8. Sweeping Calligraphic Underline Flourish
     {
         id: 'underline-flourish',
         d: 'M 218,138 C 285,198 375,212 492,188 C 565,173 638,168 692,182',
-        strokeWidth: 28,
+        strokeWidth: 30,
         weight: 0.09,
     },
-    // 9. Top-Right Botanical Two-Leaf Accent
     {
         id: 'leaf-motif',
         d: 'M 708,86 C 722,68 742,50 764,42',
-        strokeWidth: 48,
+        strokeWidth: 50,
         weight: 0.05,
     },
 ];
@@ -87,14 +72,16 @@ export const LoadingScreen: React.FC = () => {
     const setPhase = useGameStore((state) => state.setPhase);
     const introStage = useGameStore((state) => state.introStage);
     const setIntroStage = useGameStore((state) => state.setIntroStage);
+    const characterModel = useGameStore((state) => state.characterModel);
+    const setCharacterModel = useGameStore((state) => state.setCharacterModel);
 
     const maskPathRefs = useRef<Array<SVGPathElement | null>>([]);
     const underlineVisRef = useRef<SVGPathElement | null>(null);
     const brushFollowerRef = useRef<HTMLDivElement | null>(null);
+    const wetTipCircleRef = useRef<SVGCircleElement | null>(null);
 
     const [paintComplete, setPaintComplete] = useState(false);
 
-    // Orchestrate the 6-frame sequence with true path-synchronized painting
     useEffect(() => {
         if (phase !== 'loading') return;
 
@@ -103,13 +90,11 @@ export const LoadingScreen: React.FC = () => {
 
         let rafId = 0;
         let startTime = 0;
-        const PAINT_DURATION_MS = 3100;
+        const PAINT_DURATION_MS = 3200;
 
-        // Begin painting at 550ms
         const startTimer = setTimeout(() => {
             setIntroStage(2);
 
-            // Measure all SVG guide stroke lengths
             const pathMetrics = CALLIGRAPHY_GUIDE_STROKES.map((spec, idx) => {
                 const el = maskPathRefs.current[idx];
                 const len = el ? el.getTotalLength() : 200;
@@ -135,8 +120,6 @@ export const LoadingScreen: React.FC = () => {
                 if (!startTime) startTime = now;
                 const elapsed = now - startTime;
                 const rawProgress = Math.min(1, elapsed / PAINT_DURATION_MS);
-
-                // Smooth easeInOutSine overall curve
                 const globalT = 0.5 - 0.5 * Math.cos(rawProgress * Math.PI);
 
                 let accumulatedWeight = 0;
@@ -160,16 +143,12 @@ export const LoadingScreen: React.FC = () => {
                     } else if (globalT <= segStart) {
                         m.el.style.strokeDashoffset = `${m.len}`;
                     } else {
-                        // Currently painting this stroke!
                         const localRaw = (globalT - segStart) / m.weight;
-                        // Subtle natural calligraphy ease within each stroke
-                        const localEased =
-                            localRaw * localRaw * (3 - 2 * localRaw);
+                        const localEased = localRaw * localRaw * (3 - 2 * localRaw);
                         const drawDist = localEased * m.len;
 
                         m.el.style.strokeDashoffset = `${m.len - drawDist}`;
 
-                        // Synchronize visible underline flourish with stroke #7
                         if (i === 7 && underlineEl) {
                             underlineEl.style.strokeDashoffset = `${underlineLen * (1 - localEased)
                                 }`;
@@ -186,19 +165,19 @@ export const LoadingScreen: React.FC = () => {
                         const dy = aheadPt.y - pt.y;
                         if (Math.hypot(dx, dy) > 0.05) {
                             const strokeDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
-                            targetAngle = THREE_MathUtils_clamp(
-                                strokeDeg * 0.22 - 14,
-                                -28,
-                                8
-                            );
+                            targetAngle = clampNum(strokeDeg * 0.22 - 14, -28, 8);
                         }
                     }
                 }
 
-                // Smooth continuous interpolation so transitions between strokes never snap
-                smoothX += (targetX - smoothX) * 0.34;
-                smoothY += (targetY - smoothY) * 0.34;
-                smoothAngle += (targetAngle - smoothAngle) * 0.25;
+                smoothX += (targetX - smoothX) * 0.36;
+                smoothY += (targetY - smoothY) * 0.36;
+                smoothAngle += (targetAngle - smoothAngle) * 0.26;
+
+                if (wetTipCircleRef.current) {
+                    wetTipCircleRef.current.setAttribute('cx', `${smoothX}`);
+                    wetTipCircleRef.current.setAttribute('cy', `${smoothY}`);
+                }
 
                 if (brushFollowerRef.current) {
                     const pctX = (smoothX / 920) * 100;
@@ -222,14 +201,13 @@ export const LoadingScreen: React.FC = () => {
                     rafId = requestAnimationFrame(animateBrush);
                 } else {
                     setPaintComplete(true);
-                    setIntroStage(3); // Reveal Subtitle & Botanical Divider
+                    setIntroStage(3);
                 }
             };
 
             rafId = requestAnimationFrame(animateBrush);
         }, 550);
 
-        // Stage 4: Interactive "Enter the Garden" Stone Button appears after subtitle
         const stage4Timer = setTimeout(() => {
             setIntroStage(4);
         }, 4350);
@@ -247,11 +225,11 @@ export const LoadingScreen: React.FC = () => {
 
         setTimeout(() => {
             setIntroStage(6 as IntroStage);
-        }, 2100);
+        }, 2000);
 
         setTimeout(() => {
             setPhase('exploring');
-        }, 2850);
+        }, 2750);
     };
 
     if (phase === 'exploring') return null;
@@ -279,22 +257,40 @@ export const LoadingScreen: React.FC = () => {
                             xmlns="http://www.w3.org/2000/svg"
                         >
                             <defs>
-                                {/* True Multi-Stroke Calligraphic Path Mask */}
+                                {/* Bristle Edge Displacement Filter so mask edges feel like real paint bristles */}
+                                <filter id="bristleMaskEdge" x="-10%" y="-10%" width="120%" height="120%">
+                                    <feTurbulence
+                                        type="fractalNoise"
+                                        baseFrequency="0.065"
+                                        numOctaves="2"
+                                        result="bristleNoise"
+                                    />
+                                    <feDisplacementMap
+                                        in="SourceGraphic"
+                                        in2="bristleNoise"
+                                        scale="7"
+                                        xChannelSelector="R"
+                                        yChannelSelector="G"
+                                    />
+                                </filter>
+
                                 <mask id="calligraphyContourMask">
-                                    {CALLIGRAPHY_GUIDE_STROKES.map((spec, idx) => (
-                                        <path
-                                            key={spec.id}
-                                            ref={(el) => {
-                                                maskPathRefs.current[idx] = el;
-                                            }}
-                                            d={spec.d}
-                                            fill="none"
-                                            stroke="#ffffff"
-                                            strokeWidth={spec.strokeWidth}
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                        />
-                                    ))}
+                                    <g filter="url(#bristleMaskEdge)">
+                                        {CALLIGRAPHY_GUIDE_STROKES.map((spec, idx) => (
+                                            <path
+                                                key={spec.id}
+                                                ref={(el) => {
+                                                    maskPathRefs.current[idx] = el;
+                                                }}
+                                                d={spec.d}
+                                                fill="none"
+                                                stroke="#ffffff"
+                                                strokeWidth={spec.strokeWidth}
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                            />
+                                        ))}
+                                    </g>
                                     {paintComplete && (
                                         <rect x="0" y="0" width="920" height="250" fill="#ffffff" />
                                     )}
@@ -330,7 +326,6 @@ export const LoadingScreen: React.FC = () => {
                                     Keepsake
                                 </text>
 
-                                {/* Progressive Sweeping Calligraphic Underline Flourish */}
                                 <path
                                     ref={underlineVisRef}
                                     d="M 218,136 C 285,198 375,212 492,188 C 565,173 638,168 690,182"
@@ -348,7 +343,6 @@ export const LoadingScreen: React.FC = () => {
                                     opacity="0.82"
                                 />
 
-                                {/* Top-Right Two-Leaf Botanical Accent */}
                                 <g transform="translate(715, 58) rotate(-8)">
                                     <path
                                         d="M -6,28 Q 8,14 26,-2"
@@ -366,10 +360,21 @@ export const LoadingScreen: React.FC = () => {
                                         fill="#f2dfc4"
                                     />
                                 </g>
+
+                                {/* Active Wet Paint Sheen under the Brush Tip */}
+                                {introStage === 2 && (
+                                    <circle
+                                        ref={wetTipCircleRef}
+                                        cx="225"
+                                        cy="46"
+                                        r="16"
+                                        fill="#fffaf0"
+                                        opacity="0.65"
+                                    />
+                                )}
                             </g>
                         </svg>
 
-                        {/* Real-Time Path-Synchronized Artist Paintbrush */}
                         {introStage === 2 && (
                             <div
                                 ref={brushFollowerRef}
@@ -413,13 +418,11 @@ export const LoadingScreen: React.FC = () => {
                                         d="M 4,44 C 18,30 34,31 49,33 L 52,46 C 35,51 18,50 4,44 Z"
                                         fill="#4c3832"
                                     />
-                                    {/* Bristle texture lines */}
                                     <path
-                                        d="M 10,42 L 46,36 M 12,45 L 48,41"
-                                        stroke="#6b5148"
-                                        strokeWidth="1"
+                                        d="M 9,41 L 46,35 M 11,44 L 48,39 M 13,47 L 47,43"
+                                        stroke="#6e5248"
+                                        strokeWidth="0.9"
                                     />
-                                    {/* Active Cream Paint on Tip (Anchored at (6, 44)) */}
                                     <path
                                         d="M 3,44 C 11,38 20,38 26,40 C 20,46 11,47 3,44 Z"
                                         fill="#f7ecda"
@@ -429,7 +432,6 @@ export const LoadingScreen: React.FC = () => {
                         )}
                     </div>
 
-                    {/* Subtitle & Botanical Divider */}
                     <div
                         className={`subtitle-ornament-group ${introStage >= 3 ? 'subtitle-ornament-group--visible' : ''
                             }`}
@@ -479,57 +481,80 @@ export const LoadingScreen: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Lower Slot: Sculpted Stone Button OR Circular Brushstroke Loader */}
                 <div className="loading-lower-slot">
                     {introStage === 4 && (
-                        <button
-                            type="button"
-                            className="sculpted-stone-enter-btn"
-                            onClick={handleEnterGarden}
-                        >
-                            <svg
-                                className="stone-btn-svg"
-                                viewBox="0 0 340 86"
-                                width="310"
-                                height="78"
+                        <div className="intro-interactive-stack">
+                            {/* Selectable Playable Explorer Archetype (Matches Character Model F.png & M.png) */}
+                            <div className="explorer-select-row">
+                                <button
+                                    type="button"
+                                    className={`explorer-choice-pill ${characterModel === 'female' ? 'active' : ''
+                                        }`}
+                                    onClick={() => setCharacterModel('female')}
+                                >
+                                    <span className="explorer-choice-dot" />
+                                    <span>Female Explorer (Floral Orb & Headphones)</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`explorer-choice-pill ${characterModel === 'male' ? 'active' : ''
+                                        }`}
+                                    onClick={() => setCharacterModel('male')}
+                                >
+                                    <span className="explorer-choice-dot" />
+                                    <span>Male Explorer (Brass Lantern & Goggles)</span>
+                                </button>
+                            </div>
+
+                            <button
+                                type="button"
+                                className="sculpted-stone-enter-btn"
+                                onClick={handleEnterGarden}
                             >
-                                <defs>
-                                    <linearGradient
-                                        id="stoneRimGrad"
-                                        x1="0%"
-                                        y1="0%"
-                                        x2="0%"
-                                        y2="100%"
-                                    >
-                                        <stop offset="0%" stopColor="#d9c0a6" />
-                                        <stop offset="55%" stopColor="#b3967d" />
-                                        <stop offset="100%" stopColor="#856d5c" />
-                                    </linearGradient>
-                                    <linearGradient
-                                        id="parchmentFaceGrad"
-                                        x1="0%"
-                                        y1="0%"
-                                        x2="0%"
-                                        y2="100%"
-                                    >
-                                        <stop offset="0%" stopColor="#f3e5d2" />
-                                        <stop offset="100%" stopColor="#dfc8ae" />
-                                    </linearGradient>
-                                </defs>
-                                <polygon
-                                    points="28,8 95,4 245,4 312,8 334,26 336,58 310,78 240,82 100,82 26,78 4,58 6,26"
-                                    fill="url(#stoneRimGrad)"
-                                    stroke="#f7e8d4"
-                                    strokeWidth="1"
-                                    strokeOpacity="0.6"
-                                />
-                                <polygon
-                                    points="34,15 100,12 240,12 306,15 324,29 325,54 304,69 238,72 102,72 34,69 15,54 16,29"
-                                    fill="url(#parchmentFaceGrad)"
-                                />
-                            </svg>
-                            <span className="stone-btn-label">Enter the Garden</span>
-                        </button>
+                                <svg
+                                    className="stone-btn-svg"
+                                    viewBox="0 0 340 86"
+                                    width="310"
+                                    height="78"
+                                >
+                                    <defs>
+                                        <linearGradient
+                                            id="stoneRimGrad"
+                                            x1="0%"
+                                            y1="0%"
+                                            x2="0%"
+                                            y2="100%"
+                                        >
+                                            <stop offset="0%" stopColor="#d9c0a6" />
+                                            <stop offset="55%" stopColor="#b3967d" />
+                                            <stop offset="100%" stopColor="#856d5c" />
+                                        </linearGradient>
+                                        <linearGradient
+                                            id="parchmentFaceGrad"
+                                            x1="0%"
+                                            y1="0%"
+                                            x2="0%"
+                                            y2="100%"
+                                        >
+                                            <stop offset="0%" stopColor="#f3e5d2" />
+                                            <stop offset="100%" stopColor="#dfc8ae" />
+                                        </linearGradient>
+                                    </defs>
+                                    <polygon
+                                        points="28,8 95,4 245,4 312,8 334,26 336,58 310,78 240,82 100,82 26,78 4,58 6,26"
+                                        fill="url(#stoneRimGrad)"
+                                        stroke="#f7e8d4"
+                                        strokeWidth="1"
+                                        strokeOpacity="0.6"
+                                    />
+                                    <polygon
+                                        points="34,15 100,12 240,12 306,15 324,29 325,54 304,69 238,72 102,72 34,69 15,54 16,29"
+                                        fill="url(#parchmentFaceGrad)"
+                                    />
+                                </svg>
+                                <span className="stone-btn-label">Enter the Garden</span>
+                            </button>
+                        </div>
                     )}
 
                     {introStage >= 5 && (
@@ -604,6 +629,6 @@ export const LoadingScreen: React.FC = () => {
     );
 };
 
-function THREE_MathUtils_clamp(val: number, min: number, max: number): number {
+function clampNum(val: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, val));
 }
