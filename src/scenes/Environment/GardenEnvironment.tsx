@@ -13,6 +13,24 @@ import { MemoryPedestals } from '../../components/Memory/MemoryPedestals';
 import { MemoryRadiance } from './MemoryRadiance';
 import { collisionManager } from '../../systems/Collision/collisionSystem';
 import { playerTelemetry } from '../../store/useGameStore';
+import {
+    CozyStorybookCottage,
+    EngravedMemoryMonument,
+    ExplorerCampsite,
+    GlowingButterflies,
+    RedToriiGate,
+    SpottedMushroomCluster,
+    StandingMemoryBanner,
+    StandingStonePillar,
+    StylizedReflectionPond,
+    WoodenArchedBridge,
+    WoodenCargoCart,
+    WoodenFenceSection,
+    WoodenLanternPost,
+    WoodenMemoryNoticeboard,
+    WoodenSignpost,
+    WoodenStraightBridge,
+} from '../../components/Environment/WorldAssetLibrary';
 
 const StoneArchwayRuin: React.FC<{
     position: [number, number, number];
@@ -396,54 +414,81 @@ const HorizonVista: React.FC = () => {
 };
 
 export const GardenEnvironment: React.FC = () => {
-    const archY = useMemo(() => getGardenTerrainHeight(-6.8, -3.5), []);
-    const sakuraY = useMemo(() => getGardenTerrainHeight(6.2, 2.2), []);
+    const h = (x: number, z: number) => getGardenTerrainHeight(x, z);
+
+    const archY = useMemo(() => h(-6.8, -3.5), []);
+    const sakuraY = useMemo(() => h(6.2, 2.2), []);
+    const cottageY = useMemo(() => h(11.5, -6.5), []);
+    const toriiY = useMemo(() => h(-0.6, -10.2), []);
+    const pondY = useMemo(() => h(-5.8, -14.2), []);
+    const campY = useMemo(() => h(6.8, -13.5), []);
 
     useEffect(() => {
         collisionManager.setStaticColliders([
-            {
-                id: 'hero_sakura_trunk',
-                x: 6.2,
-                y: sakuraY,
-                z: 2.2,
-                radius: 1.55,
-                height: 8.5,
-                blocksCamera: true,
-            },
-            {
-                id: 'arch_pillar_left',
-                x: -6.8 - 1.75 * Math.cos(0.34),
-                y: archY,
-                z: -3.5 + 1.75 * Math.sin(0.34),
-                radius: 0.85,
-                height: 5.5,
-                blocksCamera: true,
-            },
-            {
-                id: 'arch_pillar_right',
-                x: -6.8 + 1.75 * Math.cos(0.34),
-                y: archY,
-                z: -3.5 - 1.75 * Math.sin(0.34),
-                radius: 0.85,
-                height: 5.5,
-                blocksCamera: true,
-            },
-            { id: 'ped_1', x: 2.35, y: getGardenTerrainHeight(2.35, 4.2), z: 4.2, radius: 0.85, height: 2.0, blocksCamera: false },
-            { id: 'ped_2', x: -3.6, y: getGardenTerrainHeight(-3.6, 2.2), z: 2.2, radius: 0.85, height: 2.0, blocksCamera: false },
-            { id: 'ped_3', x: 1.9, y: getGardenTerrainHeight(1.9, -4.8), z: -4.8, radius: 0.85, height: 2.0, blocksCamera: false },
-            { id: 'ped_4', x: -2.4, y: getGardenTerrainHeight(-2.4, -6.5), z: -6.5, radius: 0.85, height: 2.0, blocksCamera: false },
+            // Giant Sakura Tree
+            { id: 'hero_sakura_trunk', x: 6.2, y: sakuraY, z: 2.2, radius: 1.55, height: 8.5, blocksCamera: true },
+            // Stone Archway Pillars
+            { id: 'arch_pillar_left', x: -6.8 - 1.75 * Math.cos(0.34), y: archY, z: -3.5 + 1.75 * Math.sin(0.34), radius: 0.85, height: 5.5, blocksCamera: true },
+            { id: 'arch_pillar_right', x: -6.8 + 1.75 * Math.cos(0.34), y: archY, z: -3.5 - 1.75 * Math.sin(0.34), radius: 0.85, height: 5.5, blocksCamera: true },
+            // Cozy Storybook Cottage
+            { id: 'cottage_col', x: 11.5, y: cottageY, z: -6.5, radius: 2.45, height: 4.0, blocksCamera: true },
+            // Red Torii Gate Pillars
+            { id: 'torii_left', x: -0.6 - 1.45, y: toriiY, z: -10.2, radius: 0.42, height: 3.8, blocksCamera: true },
+            { id: 'torii_right', x: -0.6 + 1.45, y: toriiY, z: -10.2, radius: 0.42, height: 3.8, blocksCamera: true },
+            // Explorer Campsite Tent & Campfire
+            { id: 'camp_tent', x: 7.65, y: campY, z: -13.9, radius: 1.35, height: 2.2, blocksCamera: false },
+            { id: 'camp_fire', x: 5.85, y: campY, z: -12.35, radius: 0.65, height: 1.0, blocksCamera: false },
+            // Memory Pedestal Colliders
+            { id: 'ped_1', x: 1.65, y: h(1.65, 5.8), z: 5.8, radius: 0.9, height: 2.0, blocksCamera: false },
+            { id: 'ped_2', x: 2.85, y: h(2.85, 3.6), z: 3.6, radius: 1.65, height: 3.2, blocksCamera: false },
+            { id: 'ped_3', x: -3.6, y: h(-3.6, 2.2), z: 2.2, radius: 1.15, height: 2.8, blocksCamera: false },
+            { id: 'ped_4', x: 2.1, y: h(2.1, -4.8), z: -4.8, radius: 1.15, height: 2.8, blocksCamera: false },
+            { id: 'ped_5', x: -2.6, y: h(-2.6, -6.8), z: -6.8, radius: 1.65, height: 3.2, blocksCamera: false },
         ]);
-    }, [archY, sakuraY]);
+    }, [archY, sakuraY, cottageY, toriiY, campY]);
 
     return (
         <group>
             <ChunkedTerrain />
-            <StoneArchwayRuin
-                position={[-6.8, archY - 0.1, -3.5]}
-                rotationY={0.34}
-                scale={1.08}
-            />
+
+            {/* Hero Sanctuary Landmarks */}
+            <StoneArchwayRuin position={[-6.8, archY - 0.1, -3.5]} rotationY={0.34} scale={1.08} />
             <GiantSakuraTree position={[6.2, sakuraY - 0.15, 2.2]} />
+
+            {/* Structures & Landmarks from Assets.jpeg */}
+            <CozyStorybookCottage position={[11.5, cottageY - 0.08, -6.5]} rotationY={-0.65} />
+            <RedToriiGate position={[-0.6, toriiY - 0.05, -10.2]} rotationY={0.08} />
+            <StandingStonePillar position={[-9.5, h(-9.5, -1.2) - 0.05, -1.2]} rotationY={0.4} />
+            <StandingStonePillar position={[-8.2, h(-8.2, -6.5) - 0.05, -6.5]} rotationY={-0.25} scale={0.88} />
+
+            {/* Water & Bridges from Assets.jpeg */}
+            <StylizedReflectionPond position={[-5.8, pondY + 0.02, -14.2]} scale={1.15} />
+            <WoodenArchedBridge position={[-5.8, pondY + 0.05, -14.2]} rotationY={0.42} />
+            <WoodenStraightBridge position={[4.2, h(4.2, -9.2) + 0.04, -9.2]} rotationY={-0.3} />
+
+            {/* Interactables & Memory Elements from Assets.jpeg */}
+            <WoodenMemoryNoticeboard position={[-2.4, h(-2.4, 6.2) - 0.04, 6.2]} rotationY={0.45} />
+            <EngravedMemoryMonument position={[-5.6, h(-5.6, 4.6) - 0.04, 4.6]} rotationY={0.62} />
+            <StandingMemoryBanner position={[1.1, h(1.1, -9.6) - 0.04, -9.6]} rotationY={-0.2} />
+            <StandingMemoryBanner position={[-2.3, h(-2.3, -9.6) - 0.04, -9.6]} rotationY={0.2} />
+            <WoodenLanternPost position={[1.8, h(1.8, 7.6) - 0.04, 7.6]} rotationY={-2.4} />
+            <WoodenLanternPost position={[-1.9, h(-1.9, 0.2) - 0.04, 0.2]} rotationY={0.5} />
+            <WoodenLanternPost position={[1.8, h(1.8, -1.8) - 0.04, -1.8]} rotationY={-2.6} />
+
+            {/* Utility & World Props from Assets.jpeg */}
+            <ExplorerCampsite position={[6.8, campY - 0.04, -13.5]} rotationY={-0.45} />
+            <WoodenCargoCart position={[8.2, h(8.2, -3.2) - 0.04, -3.2]} rotationY={-0.8} />
+            <WoodenSignpost position={[-1.6, h(-1.6, 3.8) - 0.04, 3.8]} rotationY={0.35} />
+            <WoodenFenceSection position={[7.4, h(7.4, -1.2) - 0.04, -1.2]} rotationY={-0.55} />
+            <WoodenFenceSection position={[9.4, h(9.4, -2.5) - 0.04, -2.5]} rotationY={-0.55} />
+
+            {/* Ambient Details: Spotted Mushrooms & Glowing Butterflies */}
+            <SpottedMushroomCluster position={[4.5, h(4.5, 3.2), 3.2]} scale={1.15} />
+            <SpottedMushroomCluster position={[-4.8, h(-4.8, -1.5), -1.5]} scale={1.0} />
+            <SpottedMushroomCluster position={[3.6, h(3.6, -5.8), -5.8]} scale={1.2} />
+            <GlowingButterflies center={[0, 1.5, 2]} count={10} />
+            <GlowingButterflies center={[-5.8, pondY + 1.2, -14.2]} count={6} />
+
             <HorizonVista />
             <WorldSpaceBlossomPetals />
             <MemoryPedestals />

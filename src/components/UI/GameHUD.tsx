@@ -1,5 +1,5 @@
 // src/components/UI/GameHUD.tsx
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     BookOpen,
     UserCheck,
@@ -11,13 +11,21 @@ import {
     Volume2,
     Sprout,
     Compass,
+    Layers,
+    Navigation,
 } from 'lucide-react';
-import { useGameStore } from '../../store/useGameStore';
+import { playerTelemetry, useGameStore } from '../../store/useGameStore';
+import { getGardenTerrainHeight } from '../../scenes/Environment/lowPolyUtils';
+import {
+    KEEPSAKE_ASSET_MANIFEST,
+    type AssetManifestEntry,
+} from '../../systems/AssetManager/glbExporter';
 import './GameHUD.css';
 
 export const GameHUD: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
     const inputMode = useGameStore((state) => state.inputMode);
+    const setInputMode = useGameStore((state) => state.setInputMode);
     const toggleInputMode = useGameStore((state) => state.toggleInputMode);
     const nearbyMemory = useGameStore((state) => state.nearbyMemory);
     const activeMemory = useGameStore((state) => state.activeMemory);
@@ -34,6 +42,8 @@ export const GameHUD: React.FC = () => {
     const activeChunkCoord = useGameStore((state) => state.activeChunkCoord);
     const setPhase = useGameStore((state) => state.setPhase);
     const setIntroStage = useGameStore((state) => state.setIntroStage);
+
+    const [showAssetCatalog, setShowAssetCatalog] = useState(false);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
@@ -57,8 +67,18 @@ export const GameHUD: React.FC = () => {
 
     const handleReplayIntro = () => {
         closeMemory();
+        setShowAssetCatalog(false);
         setIntroStage(1);
         setPhase('loading');
+    };
+
+    const handleTeleportToAsset = (entry: AssetManifestEntry) => {
+        const [tx, tz] = entry.worldCoords;
+        const ty = getGardenTerrainHeight(tx, tz);
+        playerTelemetry.position = [tx, ty, tz];
+        playerTelemetry.velocity = [0, 0, 0];
+        setShowAssetCatalog(false);
+        setInputMode('camera');
     };
 
     return (
@@ -101,7 +121,7 @@ export const GameHUD: React.FC = () => {
             </div>
 
             {/* Top-Center Landmark Zone Banner */}
-            {nearbyZone && !currentMemoryData && (
+            {nearbyZone && !currentMemoryData && !showAssetCatalog && (
                 <div className="hud-zone-banner">
                     <span className="hud-zone-type">
                         {nearbyZone.zoneType.replace('_', ' ').toUpperCase()}
@@ -121,10 +141,22 @@ export const GameHUD: React.FC = () => {
                     <UserCheck size={16} />
                     <span>
                         {characterModel === 'female'
-                            ? 'Explorer: Female (F)'
-                            : 'Explorer: Male (M)'}
+                            ? 'Wanderer: Female (F)'
+                            : 'Wanderer: Male (M)'}
                     </span>
                     <kbd className="hud-mini-key">C</kbd>
+                </button>
+
+                <button
+                    className="hud-explorer-switch-pill"
+                    onClick={() => {
+                        setShowAssetCatalog((prev) => !prev);
+                        setInputMode('cursor');
+                    }}
+                    title="Inspect 3D Asset Library in World"
+                >
+                    <Layers size={16} />
+                    <span>3D Assets ({KEEPSAKE_ASSET_MANIFEST.length})</span>
                 </button>
 
                 <button
@@ -146,8 +178,70 @@ export const GameHUD: React.FC = () => {
                 </button>
             </div>
 
+            {/* 3D Asset Library Quick-Inspector Modal */}
+            {showAssetCatalog && (
+                <div
+                    className="memory-modal-backdrop"
+                    onClick={() => setShowAssetCatalog(false)}
+                >
+                    <div
+                        className="memory-parchment-card asset-catalog-card"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            className="memory-close-btn"
+                            onClick={() => setShowAssetCatalog(false)}
+                            aria-label="Close Asset Catalog"
+                        >
+                            <X size={20} />
+                        </button>
+
+                        <div className="memory-card-header">
+                            <span className="memory-category-tag">
+                                REAL-TIME 3D ASSET MANIFEST
+                            </span>
+                            <h2 className="memory-card-title">
+                                Keepsake 3D World Library
+                            </h2>
+                            <p className="memory-card-subtitle">
+                                Click any asset below to teleport your Explorer directly
+                                to its location in the garden.
+                            </p>
+                        </div>
+
+                        <div className="asset-manifest-list">
+                            {KEEPSAKE_ASSET_MANIFEST.map((item) => (
+                                <div key={item.id} className="asset-manifest-row">
+                                    <div className="asset-manifest-info">
+                                        <div className="asset-manifest-title-row">
+                                            <strong>{item.name}</strong>
+                                            <span className="asset-manifest-dim">
+                                                {item.dimensions}
+                                            </span>
+                                        </div>
+                                        <span className="asset-manifest-path">
+                                            {item.filename}
+                                        </span>
+                                        <p className="asset-manifest-desc">
+                                            {item.intendedUse}
+                                        </p>
+                                    </div>
+                                    <button
+                                        className="asset-teleport-btn"
+                                        onClick={() => handleTeleportToAsset(item)}
+                                    >
+                                        <Navigation size={14} />
+                                        <span>Visit in 3D</span>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Contextual Proximity Prompt */}
-            {nearbyMemory && !currentMemoryData && (
+            {nearbyMemory && !currentMemoryData && !showAssetCatalog && (
                 <div className="hud-proximity-prompt">
                     <button
                         className="remember-prompt-pill"
@@ -157,7 +251,7 @@ export const GameHUD: React.FC = () => {
                         <kbd className="remember-prompt-key">E</kbd>
                     </button>
                     <span className="remember-prompt-subtitle">
-                        {nearbyMemory.title} ({nearbyMemory.growthStage?.toUpperCase()})
+                        {nearbyMemory.title} ({nearbyMemory.subtitle})
                     </span>
                 </div>
             )}
@@ -201,7 +295,7 @@ export const GameHUD: React.FC = () => {
 
                 <div className="control-row">
                     <kbd className="key-cap">E</kbd>
-                    <span className="control-label">Awaken Memory Echo</span>
+                    <span className="control-label">Awaken Memory Pedestal</span>
                 </div>
 
                 <div className="control-row">
@@ -249,7 +343,7 @@ export const GameHUD: React.FC = () => {
                                 </span>
                                 <span className="memory-stage-badge">
                                     <Sprout size={13} />
-                                    Stage: {(currentMemoryData.growthStage || 'seed').toUpperCase()}
+                                    {currentMemoryData.subtitle}
                                 </span>
                                 {currentMemoryData.importance && (
                                     <span className="memory-importance-badge">
@@ -259,7 +353,7 @@ export const GameHUD: React.FC = () => {
                             </div>
                             <h2 className="memory-card-title">{currentMemoryData.title}</h2>
                             <p className="memory-card-subtitle">
-                                {currentMemoryData.subtitle}
+                                {currentMemoryData.location}
                             </p>
                         </div>
 

@@ -26,7 +26,9 @@ const SHARED_GEOMETRIES = {
     pineTier3: new THREE.ConeGeometry(0.72, 1.35, 7),
     canopyMain: createSculptedFacetedGeometry(1.35, 1, [1.15, 0.9, 1.1], 0.16, 12),
     canopySub: createSculptedFacetedGeometry(0.95, 1, [1.1, 0.85, 1.05], 0.18, 29),
+    shrubGeo: createSculptedFacetedGeometry(0.55, 1, [1.25, 0.85, 1.15], 0.18, 63),
     boulder: createSculptedFacetedGeometry(0.85, 1, [1.3, 0.82, 1.15], 0.22, 41, true),
+    mossCap: createSculptedFacetedGeometry(0.72, 1, [1.25, 0.35, 1.08], 0.15, 52),
     fallenLog: new THREE.CylinderGeometry(0.22, 0.26, 2.6, 6),
     steppingStone: new THREE.CylinderGeometry(0.68, 0.78, 0.14, 7),
     grassBlade: new THREE.ConeGeometry(0.08, 0.42, 4),
@@ -40,7 +42,7 @@ interface TreeData {
     z: number;
     scale: number;
     rotY: number;
-    species: 'sakura' | 'pine' | 'oak';
+    species: 'sakura' | 'pine' | 'oak' | 'shrub';
 }
 
 interface PropData {
@@ -50,7 +52,7 @@ interface PropData {
     z: number;
     scale: [number, number, number];
     rot: [number, number, number];
-    type: 'rock' | 'log' | 'stone';
+    type: 'rock' | 'mossy_rock' | 'log' | 'stone';
     color: string;
 }
 
@@ -69,8 +71,7 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
     const flowerMeshRef = useRef<THREE.InstancedMesh>(null);
     const terrainMeshRef = useRef<THREE.Mesh>(null);
 
-    // STEP 1 & 2: Synchronous Heightmap & Terrain Geometry with Zero Border Disconnects
-    const { terrainGeo, rawVertexPositions } = useMemo(() => {
+    const terrainGeo = useMemo(() => {
         const plane = new THREE.PlaneGeometry(
             CHUNK_SIZE,
             CHUNK_SIZE,
@@ -122,10 +123,9 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
         nonIndexed.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         nonIndexed.computeVertexNormals();
 
-        return { terrainGeo: nonIndexed, rawVertexPositions: pos };
+        return nonIndexed;
     }, [worldOriginX, worldOriginZ]);
 
-    // STEP 3, 4 & 5: Place Props with Exact Embedded Heights so No Objects Float
     const { trees, propsList, grassTransforms, flowerTransforms, colliders } =
         useMemo(() => {
             const generatedTrees: TreeData[] = [];
@@ -159,7 +159,7 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                     generatedProps.push({
                         id: `stone_${chunkKey}_${sIdx}`,
                         x: wx - worldOriginX,
-                        y: wy + 0.02, // Snug on terrain
+                        y: wy + 0.02,
                         z: wz - worldOriginZ,
                         scale: [
                             0.95 + seededRandom(sIdx * 7) * 0.35,
@@ -174,8 +174,8 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                 }
             }
 
-            // Clustered Trees (Embedded into ground)
-            const treeSlots = 18;
+            // Clustered Trees & Shrubs
+            const treeSlots = 20;
             for (let i = 0; i < treeSlots; i++) {
                 const seed = hash2D(cx * 37 + i, cz * 53 + i, 101);
                 const lx = (hash2D(cx, cz, i * 11 + 1) - 0.5) * (CHUNK_SIZE - 4);
@@ -183,10 +183,10 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                 const wx = worldOriginX + lx;
                 const wz = worldOriginZ + lz;
 
-                if (Math.abs(wx - getPathCenterX(wz)) < 3.6) continue;
-                if (Math.hypot(wx, wz - 7.5) < 4.5) continue;
-                if (Math.hypot(wx - 6.2, wz - 2.2) < 5.2) continue;
-                if (Math.hypot(wx + 6.8, wz + 3.5) < 5.0) continue;
+                if (Math.abs(wx - getPathCenterX(wz)) < 3.8) continue;
+                if (Math.hypot(wx, wz - 7.5) < 4.8) continue;
+                // Keep Sanctuary landmarks clear in chunk (0,0)
+                if (cx === 0 && cz === 0 && Math.hypot(wx, wz) < 16.5) continue;
 
                 const groveDensity =
                     Math.sin(wx * 0.065) * Math.cos(wz * 0.065) * 0.5 + 0.5;
@@ -196,35 +196,39 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                 const scale = 0.78 + seededRandom(seed * 97) * 0.75;
                 const speciesRoll = seededRandom(seed * 43);
                 const species: TreeData['species'] =
-                    speciesRoll < 0.34
+                    speciesRoll < 0.28
                         ? 'sakura'
-                        : speciesRoll < 0.68
+                        : speciesRoll < 0.56
                             ? 'oak'
-                            : 'pine';
+                            : speciesRoll < 0.82
+                                ? 'pine'
+                                : 'shrub';
 
                 generatedTrees.push({
                     id: `tree_${chunkKey}_${i}`,
                     x: lx,
-                    y: wy - 0.04, // Embedded trunk
+                    y: wy - 0.04,
                     z: lz,
                     scale,
                     rotY: seededRandom(seed * 61) * Math.PI * 2,
                     species,
                 });
 
-                generatedColliders.push({
-                    id: `col_tree_${chunkKey}_${i}`,
-                    x: wx,
-                    y: wy,
-                    z: wz,
-                    radius: 0.42 * scale,
-                    height: 4.2 * scale,
-                    blocksCamera: true,
-                });
+                if (species !== 'shrub') {
+                    generatedColliders.push({
+                        id: `col_tree_${chunkKey}_${i}`,
+                        x: wx,
+                        y: wy,
+                        z: wz,
+                        radius: 0.42 * scale,
+                        height: 4.2 * scale,
+                        blocksCamera: true,
+                    });
+                }
             }
 
-            // Boulders & Fallen Logs (Embedded to prevent floating)
-            const rockCount = 11;
+            // Boulders, Mossy Rocks & Fallen Logs
+            const rockCount = 12;
             for (let r = 0; r < rockCount; r++) {
                 const rSeed = hash2D(cx * 19 + r, cz * 29 + r, 303);
                 const lx = (hash2D(cx, cz, r * 17 + 70) - 0.5) * (CHUNK_SIZE - 3);
@@ -232,8 +236,9 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                 const wx = worldOriginX + lx;
                 const wz = worldOriginZ + lz;
 
-                if (Math.abs(wx - getPathCenterX(wz)) < 2.5) continue;
-                if (Math.hypot(wx, wz - 7.5) < 3.5) continue;
+                if (Math.abs(wx - getPathCenterX(wz)) < 2.8) continue;
+                if (Math.hypot(wx, wz - 7.5) < 3.8) continue;
+                if (cx === 0 && cz === 0 && Math.hypot(wx, wz) < 14.5) continue;
 
                 const wy = getGardenTerrainHeight(wx, wz);
                 const isFallenLog = r % 5 === 0 && rSeed > 0.35;
@@ -243,7 +248,7 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                     generatedProps.push({
                         id: `log_${chunkKey}_${r}`,
                         x: lx,
-                        y: wy + 0.08, // Embedded slightly
+                        y: wy + 0.08,
                         z: lz,
                         scale: [logScale, logScale, logScale],
                         rot: [
@@ -254,15 +259,6 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                         type: 'log',
                         color: THEME.colors.barkBase,
                     });
-                    generatedColliders.push({
-                        id: `col_log_${chunkKey}_${r}`,
-                        x: wx,
-                        y: wy,
-                        z: wz,
-                        radius: 0.65 * logScale,
-                        height: 0.65,
-                        blocksCamera: false,
-                    });
                 } else {
                     const sx = 0.6 + rSeed * 0.9;
                     const sy = 0.5 + seededRandom(rSeed * 13) * 0.65;
@@ -270,11 +266,11 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                     generatedProps.push({
                         id: `rock_${chunkKey}_${r}`,
                         x: lx,
-                        y: wy - 0.12, // Deeply embedded base
+                        y: wy - 0.12,
                         z: lz,
                         scale: [sx, sy, sz],
                         rot: [0, rSeed * Math.PI * 2, 0],
-                        type: 'rock',
+                        type: r % 3 === 0 ? 'mossy_rock' : 'rock',
                         color:
                             r % 2 === 0 ? THEME.colors.stoneBase : THEME.colors.stoneSunlit,
                     });
@@ -293,7 +289,7 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                 }
             }
 
-            // Instanced Grass & Wildflowers (Sample exact height at blade origin)
+            // Instanced Grass & Wildflowers
             const grassCount = 145;
             for (let g = 0; g < grassCount; g++) {
                 const lx = (hash2D(cx, cz, g * 3 + 500) - 0.5) * CHUNK_SIZE;
@@ -358,7 +354,6 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
         };
     }, [chunkKey, colliders, terrainGeo]);
 
-    // Dynamic Shader Injection: Injects Memory Radiance into Terrain Material
     const customTerrainMaterial = useMemo(() => {
         const mat = new THREE.MeshStandardMaterial({
             vertexColors: true,
@@ -374,7 +369,8 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
 
             mat.userData.shader = shader;
 
-            shader.fragmentShader = `
+            shader.fragmentShader =
+                `
         uniform vec3 uMemoryCenter;
         uniform float uRadianceRadius;
         uniform float uRadianceStrength;
@@ -385,18 +381,17 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                 '#include <color_fragment>',
                 `
         #include <color_fragment>
-        // Memory Radiance: Localized warmth and vibrancy enhancement
         float memDist = distance(vWorldPos, uMemoryCenter);
         float radianceFactor = clamp(1.0 - (memDist / uRadianceRadius), 0.0, 1.0);
         radianceFactor = smoothstep(0.0, 1.0, radianceFactor) * uRadianceStrength;
         
-        // Boost warmth and golden sunset saturation near active memory
         vec3 goldenGlow = vec3(1.15, 0.98, 0.65);
         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * goldenGlow + vec3(0.12, 0.08, 0.02), radianceFactor * 0.65);
         `
             );
 
-            shader.vertexShader = `
+            shader.vertexShader =
+                `
         varying vec3 vWorldPos;
       ` + shader.vertexShader;
 
@@ -412,7 +407,6 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
         return mat;
     }, []);
 
-    // Update radiance uniforms per-frame
     useFrame(() => {
         if (terrainMeshRef.current) {
             const mat = terrainMeshRef.current.material as THREE.MeshStandardMaterial;
@@ -420,14 +414,20 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
             if (shader) {
                 const [mx, my, mz] = playerTelemetry.nearestMemoryPosition;
                 shader.uniforms.uMemoryCenter.value.set(mx, my, mz);
-                shader.uniforms.uRadianceStrength.value = playerTelemetry.nearestMemoryRadiance;
+                shader.uniforms.uRadianceStrength.value =
+                    playerTelemetry.nearestMemoryRadiance;
             }
         }
     });
 
     return (
         <group position={[worldOriginX, 0, worldOriginZ]}>
-            <mesh ref={terrainMeshRef} geometry={terrainGeo} material={customTerrainMaterial} receiveShadow />
+            <mesh
+                ref={terrainMeshRef}
+                geometry={terrainGeo}
+                material={customTerrainMaterial}
+                receiveShadow
+            />
 
             {trees.map((t) => (
                 <group
@@ -436,83 +436,178 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
                     rotation={[0, t.rotY, 0]}
                     scale={t.scale}
                 >
-                    <mesh
-                        geometry={SHARED_GEOMETRIES.trunk}
-                        position={[0, 1.0, 0]}
-                        castShadow
-                        receiveShadow
-                    >
-                        <meshStandardMaterial
-                            color={THEME.colors.barkBase}
-                            roughness={0.9}
-                            flatShading
-                        />
-                    </mesh>
-
-                    {t.species === 'pine' ? (
-                        <group position={[0, 1.85, 0]}>
-                            <mesh geometry={SHARED_GEOMETRIES.pineTier1} position={[0, 0, 0]} castShadow receiveShadow>
-                                <meshStandardMaterial color={THEME.colors.canopyDark} roughness={0.85} flatShading />
-                            </mesh>
-                            <mesh geometry={SHARED_GEOMETRIES.pineTier2} position={[0, 1.0, 0]} castShadow receiveShadow>
-                                <meshStandardMaterial color={THEME.colors.meadowBase} roughness={0.85} flatShading />
-                            </mesh>
-                            <mesh geometry={SHARED_GEOMETRIES.pineTier3} position={[0, 1.85, 0]} castShadow receiveShadow>
-                                <meshStandardMaterial color={THEME.colors.canopyLight} roughness={0.85} flatShading />
-                            </mesh>
-                        </group>
+                    {t.species === 'shrub' ? (
+                        <mesh
+                            geometry={SHARED_GEOMETRIES.shrubGeo}
+                            position={[0, 0.38, 0]}
+                            castShadow
+                            receiveShadow
+                        >
+                            <meshStandardMaterial
+                                color={THEME.colors.meadowBase}
+                                roughness={0.85}
+                                flatShading
+                            />
+                        </mesh>
                     ) : (
-                        <group position={[0, 2.55, 0]}>
-                            <mesh geometry={SHARED_GEOMETRIES.canopyMain} position={[0, 0.15, 0]} castShadow receiveShadow>
+                        <>
+                            <mesh
+                                geometry={SHARED_GEOMETRIES.trunk}
+                                position={[0, 1.0, 0]}
+                                castShadow
+                                receiveShadow
+                            >
                                 <meshStandardMaterial
-                                    color={t.species === 'sakura' ? THEME.colors.sakuraMid : THEME.colors.meadowBase}
-                                    roughness={0.8}
+                                    color={THEME.colors.barkBase}
+                                    roughness={0.9}
                                     flatShading
                                 />
                             </mesh>
-                            <mesh geometry={SHARED_GEOMETRIES.canopySub} position={[-0.85, -0.25, 0.45]} castShadow receiveShadow>
-                                <meshStandardMaterial
-                                    color={t.species === 'sakura' ? THEME.colors.sakuraLight : THEME.colors.meadowSunlit}
-                                    roughness={0.8}
-                                    flatShading
-                                />
-                            </mesh>
-                            <mesh geometry={SHARED_GEOMETRIES.canopySub} position={[0.85, -0.15, -0.35]} castShadow receiveShadow>
-                                <meshStandardMaterial
-                                    color={t.species === 'sakura' ? THEME.colors.sakuraDeep : THEME.colors.canopyOlive}
-                                    roughness={0.8}
-                                    flatShading
-                                />
-                            </mesh>
-                        </group>
+
+                            {t.species === 'pine' ? (
+                                <group position={[0, 1.85, 0]}>
+                                    <mesh
+                                        geometry={SHARED_GEOMETRIES.pineTier1}
+                                        position={[0, 0, 0]}
+                                        castShadow
+                                        receiveShadow
+                                    >
+                                        <meshStandardMaterial
+                                            color={THEME.colors.canopyDark}
+                                            roughness={0.85}
+                                            flatShading
+                                        />
+                                    </mesh>
+                                    <mesh
+                                        geometry={SHARED_GEOMETRIES.pineTier2}
+                                        position={[0, 1.0, 0]}
+                                        castShadow
+                                        receiveShadow
+                                    >
+                                        <meshStandardMaterial
+                                            color={THEME.colors.meadowBase}
+                                            roughness={0.85}
+                                            flatShading
+                                        />
+                                    </mesh>
+                                    <mesh
+                                        geometry={SHARED_GEOMETRIES.pineTier3}
+                                        position={[0, 1.85, 0]}
+                                        castShadow
+                                        receiveShadow
+                                    >
+                                        <meshStandardMaterial
+                                            color={THEME.colors.canopyLight}
+                                            roughness={0.85}
+                                            flatShading
+                                        />
+                                    </mesh>
+                                </group>
+                            ) : (
+                                <group position={[0, 2.55, 0]}>
+                                    <mesh
+                                        geometry={SHARED_GEOMETRIES.canopyMain}
+                                        position={[0, 0.15, 0]}
+                                        castShadow
+                                        receiveShadow
+                                    >
+                                        <meshStandardMaterial
+                                            color={
+                                                t.species === 'sakura'
+                                                    ? THEME.colors.sakuraMid
+                                                    : THEME.colors.meadowBase
+                                            }
+                                            roughness={0.8}
+                                            flatShading
+                                        />
+                                    </mesh>
+                                    <mesh
+                                        geometry={SHARED_GEOMETRIES.canopySub}
+                                        position={[-0.85, -0.25, 0.45]}
+                                        castShadow
+                                        receiveShadow
+                                    >
+                                        <meshStandardMaterial
+                                            color={
+                                                t.species === 'sakura'
+                                                    ? THEME.colors.sakuraLight
+                                                    : THEME.colors.meadowSunlit
+                                            }
+                                            roughness={0.8}
+                                            flatShading
+                                        />
+                                    </mesh>
+                                    <mesh
+                                        geometry={SHARED_GEOMETRIES.canopySub}
+                                        position={[0.85, -0.15, -0.35]}
+                                        castShadow
+                                        receiveShadow
+                                    >
+                                        <meshStandardMaterial
+                                            color={
+                                                t.species === 'sakura'
+                                                    ? THEME.colors.sakuraDeep
+                                                    : THEME.colors.canopyOlive
+                                            }
+                                            roughness={0.8}
+                                            flatShading
+                                        />
+                                    </mesh>
+                                </group>
+                            )}
+                        </>
                     )}
                 </group>
             ))}
 
             {propsList.map((p) => (
-                <mesh
+                <group
                     key={p.id}
-                    geometry={
-                        p.type === 'rock'
-                            ? SHARED_GEOMETRIES.boulder
-                            : p.type === 'log'
-                                ? SHARED_GEOMETRIES.fallenLog
-                                : SHARED_GEOMETRIES.steppingStone
-                    }
                     position={[p.x, p.y, p.z]}
                     rotation={p.rot}
                     scale={p.scale}
-                    castShadow={p.type !== 'stone'}
-                    receiveShadow
                 >
-                    <meshStandardMaterial color={p.color} roughness={0.88} flatShading />
-                </mesh>
+                    <mesh
+                        geometry={
+                            p.type === 'rock' || p.type === 'mossy_rock'
+                                ? SHARED_GEOMETRIES.boulder
+                                : p.type === 'log'
+                                    ? SHARED_GEOMETRIES.fallenLog
+                                    : SHARED_GEOMETRIES.steppingStone
+                        }
+                        castShadow={p.type !== 'stone'}
+                        receiveShadow
+                    >
+                        <meshStandardMaterial
+                            color={p.color}
+                            roughness={0.88}
+                            flatShading
+                        />
+                    </mesh>
+                    {p.type === 'mossy_rock' && (
+                        <mesh
+                            geometry={SHARED_GEOMETRIES.mossCap}
+                            position={[0, 0.55, 0]}
+                            castShadow
+                        >
+                            <meshStandardMaterial
+                                color={THEME.colors.meadowBase}
+                                roughness={0.85}
+                                flatShading
+                            />
+                        </mesh>
+                    )}
+                </group>
             ))}
 
             {grassTransforms.length > 0 && (
                 <instancedMesh
                     ref={grassMeshRef}
-                    args={[SHARED_GEOMETRIES.grassBlade, undefined, grassTransforms.length]}
+                    args={[
+                        SHARED_GEOMETRIES.grassBlade,
+                        undefined,
+                        grassTransforms.length,
+                    ]}
                     frustumCulled={false}
                 >
                     <meshStandardMaterial
@@ -526,7 +621,11 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
             {flowerTransforms.length > 0 && (
                 <instancedMesh
                     ref={flowerMeshRef}
-                    args={[SHARED_GEOMETRIES.flowerHead, undefined, flowerTransforms.length]}
+                    args={[
+                        SHARED_GEOMETRIES.flowerHead,
+                        undefined,
+                        flowerTransforms.length,
+                    ]}
                     frustumCulled={false}
                 >
                     <meshStandardMaterial
@@ -543,7 +642,9 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(({ cx, cz, onChunkR
 export const ChunkedTerrain: React.FC = () => {
     const activeChunkCoord = useGameStore((state) => state.activeChunkCoord);
     const setActiveChunkCoord = useGameStore((state) => state.setActiveChunkCoord);
-    const setInitialTerrainReady = useGameStore((state) => state.setInitialTerrainReady);
+    const setInitialTerrainReady = useGameStore(
+        (state) => state.setInitialTerrainReady
+    );
 
     const readyChunks = useRef(new Set<string>());
 

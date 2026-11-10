@@ -8,6 +8,8 @@ export type MemoryImportance = 'whisper' | 'cherished' | 'milestone' | 'core';
 
 export type MemoryInteractionState = 'dormant' | 'nearby' | 'echoing' | 'awakened';
 
+export type PedestalVariant = 'grand_portal' | 'minimal' | 'arched' | 'seed_mound';
+
 export interface MemoryEchoContent {
     floatingPhotoTitle?: string;
     floatingPhotoPalette?: [string, string, string];
@@ -23,14 +25,14 @@ export interface MemoryItem {
     date: string;
     location: string;
     category: MemoryCategory;
+    pedestalVariant?: PedestalVariant;
     description: string;
     position: [number, number, number];
-    chunkKey?: string; // Computed dynamically from world position (cx_cz)
+    chunkKey?: string;
     rotationY?: number;
     imageUrl?: string;
     audioDuration?: string;
     tags: string[];
-    // Extended Phase 2 Memory Foundations
     people?: string[];
     groupName?: string;
     importance?: MemoryImportance;
