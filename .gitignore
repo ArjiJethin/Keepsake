@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+#Souce Code Doc
+.KEEPSAKE_SOURCE_CODE.txt

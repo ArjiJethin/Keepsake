@@ -11,60 +11,15 @@ interface GuideStrokeSpec {
 }
 
 const CALLIGRAPHY_GUIDE_STROKES: GuideStrokeSpec[] = [
-    {
-        id: 'k-stem',
-        d: 'M 225,46 C 204,88 180,142 162,196',
-        strokeWidth: 48,
-        weight: 0.11,
-    },
-    {
-        id: 'k-upper',
-        d: 'M 292,54 C 258,74 220,104 188,124',
-        strokeWidth: 46,
-        weight: 0.09,
-    },
-    {
-        id: 'k-lower',
-        d: 'M 192,122 C 218,142 246,162 278,150',
-        strokeWidth: 44,
-        weight: 0.08,
-    },
-    {
-        id: 'ee-loop',
-        d: 'M 282,138 C 306,110 330,106 318,136 C 304,160 342,154 364,132 C 384,108 398,116 382,144 C 370,162 404,158 422,138',
-        strokeWidth: 56,
-        weight: 0.16,
-    },
-    {
-        id: 'p-stroke',
-        d: 'M 426,122 C 414,158 400,196 392,222 C 406,178 426,118 456,120 C 480,124 472,158 438,154',
-        strokeWidth: 54,
-        weight: 0.13,
-    },
-    {
-        id: 'sa-stroke',
-        d: 'M 474,146 C 498,116 526,124 514,152 C 504,166 544,154 568,126 C 594,108 604,132 586,154 C 596,158 614,150 626,136',
-        strokeWidth: 58,
-        weight: 0.15,
-    },
-    {
-        id: 'ke-stroke',
-        d: 'M 634,68 C 620,108 606,144 598,162 C 618,134 652,114 662,130 C 646,146 632,148 656,156 C 682,158 712,126 696,116 C 676,114 674,156 718,144',
-        strokeWidth: 58,
-        weight: 0.14,
-    },
-    {
-        id: 'underline-flourish',
-        d: 'M 218,138 C 285,198 375,212 492,188 C 565,173 638,168 692,182',
-        strokeWidth: 30,
-        weight: 0.09,
-    },
-    {
-        id: 'leaf-motif',
-        d: 'M 708,86 C 722,68 742,50 764,42',
-        strokeWidth: 50,
-        weight: 0.05,
-    },
+    { id: 'k-stem', d: 'M 225,46 C 204,88 180,142 162,196', strokeWidth: 48, weight: 0.11 },
+    { id: 'k-upper', d: 'M 292,54 C 258,74 220,104 188,124', strokeWidth: 46, weight: 0.09 },
+    { id: 'k-lower', d: 'M 192,122 C 218,142 246,162 278,150', strokeWidth: 44, weight: 0.08 },
+    { id: 'ee-loop', d: 'M 282,138 C 306,110 330,106 318,136 C 304,160 342,154 364,132 C 384,108 398,116 382,144 C 370,162 404,158 422,138', strokeWidth: 56, weight: 0.16 },
+    { id: 'p-stroke', d: 'M 426,122 C 414,158 400,196 392,222 C 406,178 426,118 456,120 C 480,124 472,158 438,154', strokeWidth: 54, weight: 0.13 },
+    { id: 'sa-stroke', d: 'M 474,146 C 498,116 526,124 514,152 C 504,166 544,154 568,126 C 594,108 604,132 586,154 C 596,158 614,150 626,136', strokeWidth: 58, weight: 0.15 },
+    { id: 'ke-stroke', d: 'M 634,68 C 620,108 606,144 598,162 C 618,134 652,114 662,130 C 646,146 632,148 656,156 C 682,158 712,126 696,116 C 676,114 674,156 718,144', strokeWidth: 58, weight: 0.14 },
+    { id: 'underline-flourish', d: 'M 218,138 C 285,198 375,212 492,188 C 565,173 638,168 692,182', strokeWidth: 30, weight: 0.09 },
+    { id: 'leaf-motif', d: 'M 708,86 C 722,68 742,50 764,42', strokeWidth: 50, weight: 0.05 },
 ];
 
 export const LoadingScreen: React.FC = () => {
@@ -74,7 +29,7 @@ export const LoadingScreen: React.FC = () => {
     const setIntroStage = useGameStore((state) => state.setIntroStage);
     const characterModel = useGameStore((state) => state.characterModel);
     const setCharacterModel = useGameStore((state) => state.setCharacterModel);
-    const setInputMode = useGameStore((state) => state.setInputMode);
+    const isInitialTerrainReady = useGameStore((state) => state.isInitialTerrainReady);
 
     const maskPathRefs = useRef<Array<SVGPathElement | null>>([]);
     const underlineVisRef = useRef<SVGPathElement | null>(null);
@@ -223,9 +178,8 @@ export const LoadingScreen: React.FC = () => {
         }, 2000);
 
         setTimeout(() => {
+            // Transition only into gameplay when initial terrain is generated
             setPhase('exploring');
-            // Direct transition into Mode A: Camera Mode automatically
-            setInputMode('CAMERA');
         }, 2750);
     };
 
@@ -359,6 +313,7 @@ export const LoadingScreen: React.FC = () => {
                             </g>
                         </svg>
 
+                        {/* Moving Artist Paintbrush Follower (Cleaned: no translucent white circle) */}
                         {introStage === 2 && (
                             <div
                                 ref={brushFollowerRef}
@@ -367,50 +322,22 @@ export const LoadingScreen: React.FC = () => {
                             >
                                 <svg viewBox="0 0 220 70" width="195" height="62">
                                     <defs>
-                                        <linearGradient
-                                            id="woodHandle"
-                                            x1="0%"
-                                            y1="0%"
-                                            x2="100%"
-                                            y2="0%"
-                                        >
+                                        <linearGradient id="woodHandle" x1="0%" y1="0%" x2="100%" y2="0%">
                                             <stop offset="0%" stopColor="#9e643c" />
                                             <stop offset="50%" stopColor="#b87b4f" />
                                             <stop offset="100%" stopColor="#784726" />
                                         </linearGradient>
-                                        <linearGradient
-                                            id="brassFerrule"
-                                            x1="0%"
-                                            y1="0%"
-                                            x2="0%"
-                                            y2="100%"
-                                        >
+                                        <linearGradient id="brassFerrule" x1="0%" y1="0%" x2="0%" y2="100%">
                                             <stop offset="0%" stopColor="#f5dfa6" />
                                             <stop offset="50%" stopColor="#c9a563" />
                                             <stop offset="100%" stopColor="#8c6c38" />
                                         </linearGradient>
                                     </defs>
-                                    <path
-                                        d="M 78,28 L 216,2 L 220,15 L 82,40 Z"
-                                        fill="url(#woodHandle)"
-                                    />
-                                    <path
-                                        d="M 48,33 L 79,27 L 83,41 L 52,46 Z"
-                                        fill="url(#brassFerrule)"
-                                    />
-                                    <path
-                                        d="M 4,44 C 18,30 34,31 49,33 L 52,46 C 35,51 18,50 4,44 Z"
-                                        fill="#4c3832"
-                                    />
-                                    <path
-                                        d="M 9,41 L 46,35 M 11,44 L 48,39 M 13,47 L 47,43"
-                                        stroke="#6e5248"
-                                        strokeWidth="0.9"
-                                    />
-                                    <path
-                                        d="M 3,44 C 11,38 20,38 26,40 C 20,46 11,47 3,44 Z"
-                                        fill="#f7ecda"
-                                    />
+                                    <path d="M 78,28 L 216,2 L 220,15 L 82,40 Z" fill="url(#woodHandle)" />
+                                    <path d="M 48,33 L 79,27 L 83,41 L 52,46 Z" fill="url(#brassFerrule)" />
+                                    <path d="M 4,44 C 18,30 34,31 49,33 L 52,46 C 35,51 18,50 4,44 Z" fill="#4c3832" />
+                                    <path d="M 9,41 L 46,35 M 11,44 L 48,39 M 13,47 L 47,43" stroke="#6e5248" strokeWidth="0.9" />
+                                    <path d="M 3,44 C 11,38 20,38 26,40 C 20,46 11,47 3,44 Z" fill="#f7ecda" />
                                 </svg>
                             </div>
                         )}
@@ -426,39 +353,13 @@ export const LoadingScreen: React.FC = () => {
 
                         <div className="botanical-divider-row">
                             <span className="ornament-line" />
-                            <svg
-                                className="ornament-sprig-svg"
-                                viewBox="0 0 90 28"
-                                width="68"
-                                height="22"
-                            >
-                                <path
-                                    d="M 14,16 Q 45,12 76,13"
-                                    stroke="#f7ecda"
-                                    strokeWidth="1.6"
-                                    fill="none"
-                                    strokeLinecap="round"
-                                />
-                                <path
-                                    d="M 30,14 C 24,7 16,6 12,10 C 17,15 24,16 30,14 Z"
-                                    fill="#f7ecda"
-                                />
-                                <path
-                                    d="M 46,13 C 42,5 35,3 29,6 C 33,12 40,14 46,13 Z"
-                                    fill="#f7ecda"
-                                />
-                                <path
-                                    d="M 42,15 C 38,22 30,24 24,20 C 29,16 36,14 42,15 Z"
-                                    fill="#f7ecda"
-                                />
-                                <path
-                                    d="M 60,13 C 64,6 72,5 78,9 C 72,14 65,15 60,13 Z"
-                                    fill="#f7ecda"
-                                />
-                                <path
-                                    d="M 56,14 C 60,20 67,22 73,19 C 68,15 62,14 56,14 Z"
-                                    fill="#f7ecda"
-                                />
+                            <svg className="ornament-sprig-svg" viewBox="0 0 90 28" width="68" height="22">
+                                <path d="M 14,16 Q 45,12 76,13" stroke="#f7ecda" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+                                <path d="M 30,14 C 24,7 16,6 12,10 C 17,15 24,16 30,14 Z" fill="#f7ecda" />
+                                <path d="M 46,13 C 42,5 35,3 29,6 C 33,12 40,14 46,13 Z" fill="#f7ecda" />
+                                <path d="M 42,15 C 38,22 30,24 24,20 C 29,16 36,14 42,15 Z" fill="#f7ecda" />
+                                <path d="M 60,13 C 64,6 72,5 78,9 C 72,14 65,15 60,13 Z" fill="#f7ecda" />
+                                <path d="M 56,14 C 60,20 67,22 73,19 C 68,15 62,14 56,14 Z" fill="#f7ecda" />
                             </svg>
                             <span className="ornament-line" />
                         </div>
@@ -494,31 +395,14 @@ export const LoadingScreen: React.FC = () => {
                                 className="sculpted-stone-enter-btn"
                                 onClick={handleEnterGarden}
                             >
-                                <svg
-                                    className="stone-btn-svg"
-                                    viewBox="0 0 340 86"
-                                    width="310"
-                                    height="78"
-                                >
+                                <svg className="stone-btn-svg" viewBox="0 0 340 86" width="310" height="78">
                                     <defs>
-                                        <linearGradient
-                                            id="stoneRimGrad"
-                                            x1="0%"
-                                            y1="0%"
-                                            x2="0%"
-                                            y2="100%"
-                                        >
+                                        <linearGradient id="stoneRimGrad" x1="0%" y1="0%" x2="0%" y2="100%">
                                             <stop offset="0%" stopColor="#d9c0a6" />
                                             <stop offset="55%" stopColor="#b3967d" />
                                             <stop offset="100%" stopColor="#856d5c" />
                                         </linearGradient>
-                                        <linearGradient
-                                            id="parchmentFaceGrad"
-                                            x1="0%"
-                                            y1="0%"
-                                            x2="0%"
-                                            y2="100%"
-                                        >
+                                        <linearGradient id="parchmentFaceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
                                             <stop offset="0%" stopColor="#f3e5d2" />
                                             <stop offset="100%" stopColor="#dfc8ae" />
                                         </linearGradient>
@@ -535,7 +419,9 @@ export const LoadingScreen: React.FC = () => {
                                         fill="url(#parchmentFaceGrad)"
                                     />
                                 </svg>
-                                <span className="stone-btn-label">Enter the Garden</span>
+                                <span className="stone-btn-label">
+                                    {isInitialTerrainReady ? 'Enter the Garden' : 'Preparing the Garden...'}
+                                </span>
                             </button>
                         </div>
                     )}
@@ -543,31 +429,14 @@ export const LoadingScreen: React.FC = () => {
                     {introStage >= 5 && (
                         <div className="circular-brush-loader-group">
                             <div className="circular-brush-ring-box">
-                                <svg
-                                    className="circular-brush-svg"
-                                    viewBox="0 0 160 160"
-                                    width="126"
-                                    height="126"
-                                >
+                                <svg className="circular-brush-svg" viewBox="0 0 160 160" width="126" height="126">
                                     <defs>
-                                        <linearGradient
-                                            id="ringWarmGlow"
-                                            x1="0%"
-                                            y1="0%"
-                                            x2="100%"
-                                            y2="100%"
-                                        >
+                                        <linearGradient id="ringWarmGlow" x1="0%" y1="0%" x2="100%" y2="100%">
                                             <stop offset="0%" stopColor="#fff9eb" stopOpacity="0.95" />
                                             <stop offset="65%" stopColor="#ffe3b3" stopOpacity="0.9" />
                                             <stop offset="100%" stopColor="#ffbe6b" stopOpacity="0.2" />
                                         </linearGradient>
-                                        <filter
-                                            id="ringBloom"
-                                            x="-25%"
-                                            y="-25%"
-                                            width="150%"
-                                            height="150%"
-                                        >
+                                        <filter id="ringBloom" x="-25%" y="-25%" width="150%" height="150%">
                                             <feGaussianBlur stdDeviation="3.5" result="blur" />
                                             <feMerge>
                                                 <feMergeNode in="blur" />
@@ -593,11 +462,7 @@ export const LoadingScreen: React.FC = () => {
                                         />
                                     </g>
 
-                                    <g
-                                        fill="#fff4de"
-                                        filter="url(#ringBloom)"
-                                        transform="translate(128, 86) rotate(-18)"
-                                    >
+                                    <g fill="#fff4de" filter="url(#ringBloom)" transform="translate(128, 86) rotate(-18)">
                                         <path d="M 0,0 C 4,-8 12,-11 18,-9 C 14,-2 7,2 0,0 Z" />
                                         <path d="M -2,6 C -7,0 -7,-8 -2,-13 C 2,-7 2,0 -2,6 Z" />
                                     </g>

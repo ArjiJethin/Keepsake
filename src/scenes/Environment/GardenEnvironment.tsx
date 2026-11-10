@@ -10,7 +10,7 @@ import {
 } from './lowPolyUtils';
 import { ChunkedTerrain } from './ChunkedTerrain';
 import { MemoryPedestals } from '../../components/Memory/MemoryPedestals';
-import { MemoryRadianceRays } from '../../components/Memory/MemoryRadianceRays';
+import { MemoryRadiance } from './MemoryRadiance';
 import { collisionManager } from '../../systems/Collision/collisionSystem';
 import { playerTelemetry } from '../../store/useGameStore';
 
@@ -428,7 +428,7 @@ export const GardenEnvironment: React.FC = () => {
                 height: 5.5,
                 blocksCamera: true,
             },
-            { id: 'ped_1', x: 2.35, y: getGardenTerrainHeight(2.35, 4.8), z: 4.8, radius: 0.85, height: 2.0, blocksCamera: false },
+            { id: 'ped_1', x: 2.35, y: getGardenTerrainHeight(2.35, 4.2), z: 4.2, radius: 0.85, height: 2.0, blocksCamera: false },
             { id: 'ped_2', x: -3.6, y: getGardenTerrainHeight(-3.6, 2.2), z: 2.2, radius: 0.85, height: 2.0, blocksCamera: false },
             { id: 'ped_3', x: 1.9, y: getGardenTerrainHeight(1.9, -4.8), z: -4.8, radius: 0.85, height: 2.0, blocksCamera: false },
             { id: 'ped_4', x: -2.4, y: getGardenTerrainHeight(-2.4, -6.5), z: -6.5, radius: 0.85, height: 2.0, blocksCamera: false },
@@ -446,8 +446,8 @@ export const GardenEnvironment: React.FC = () => {
             <GiantSakuraTree position={[6.2, sakuraY - 0.15, 2.2]} />
             <HorizonVista />
             <WorldSpaceBlossomPetals />
-            <MemoryRadianceRays />
             <MemoryPedestals />
+            <MemoryRadiance />
         </group>
     );
 };

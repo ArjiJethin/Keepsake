@@ -181,7 +181,7 @@ export const GameHUD: React.FC = () => {
                 <div className="control-row">
                     <span className="mouse-icon-badge" />
                     <span className="control-label">
-                        {inputMode === 'CAMERA'
+                        {inputMode === 'camera'
                             ? 'Mode A: Camera Look Active'
                             : 'Mode B: UI Cursor Active (Click World or Alt to Look)'}
                     </span>
@@ -189,7 +189,7 @@ export const GameHUD: React.FC = () => {
 
                 <div className="control-row">
                     <kbd
-                        className={`key-cap key-wide ${inputMode === 'CURSOR' ? 'key-cap--active' : ''
+                        className={`key-cap key-wide ${inputMode === 'cursor' ? 'key-cap--active' : ''
                             }`}
                         onClick={toggleInputMode}
                         style={{ cursor: 'pointer', pointerEvents: 'auto' }}

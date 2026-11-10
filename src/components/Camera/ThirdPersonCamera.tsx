@@ -16,102 +16,98 @@ export const ThirdPersonCamera: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
     const inputMode = useGameStore((state) => state.inputMode);
     const setInputMode = useGameStore((state) => state.setInputMode);
-    const toggleInputMode = useGameStore((state) => state.toggleInputMode);
     const activeModal = useGameStore((state) => state.activeModal);
 
-    const currentPivot = useRef(new THREE.Vector3(0, 1.55, 7.5));
-    const currentLookAt = useRef(new THREE.Vector3(0, 1.55, 3.0));
+    const currentPivot = useRef(new THREE.Vector3(0, 1.56, 7.5));
+    const currentLookAt = useRef(new THREE.Vector3(0, 1.56, 3.0));
     const currentDistance = useRef(playerTelemetry.cameraDistance);
 
-    // Sync Pointer Lock with Mode A / Mode B
+    // Synchronize Pointer Lock and Canvas Event Listeners
     useEffect(() => {
         const dom = gl.domElement;
 
-        const requestLock = async () => {
+        const requestLock = () => {
             if (document.pointerLockElement !== dom) {
                 try {
-                    await dom.requestPointerLock();
+                    dom.requestPointerLock?.();
                 } catch {
-                    // Handled gracefully by browser security policies
+                    // Browser may defer until user gesture
                 }
             }
         };
 
-        const exitLock = () => {
+        const releaseLock = () => {
             if (document.pointerLockElement === dom) {
                 try {
-                    document.exitPointerLock();
+                    document.exitPointerLock?.();
                 } catch {
-                    // Handled gracefully
+                    // Ignore
                 }
             }
         };
 
-        if (phase === 'exploring') {
-            if (inputMode === 'CAMERA' && activeModal === 'none') {
-                requestLock();
-            } else {
-                exitLock();
-            }
+        // When entering exploring phase in Camera Mode, automatically request lock
+        if (phase === 'exploring' && inputMode === 'camera' && activeModal === 'none') {
+            requestLock();
+        } else {
+            releaseLock();
         }
 
-        const onPointerLockChange = () => {
-            const isLocked = document.pointerLockElement === dom;
-            // If user presses Escape, synchronize to CURSOR mode
-            if (!isLocked && useGameStore.getState().inputMode === 'CAMERA') {
-                setInputMode('CURSOR');
+        // Left clicking the 3D canvas while in cursor mode immediately returns to camera mode
+        const onCanvasClick = (e: MouseEvent) => {
+            const state = useGameStore.getState();
+            if (state.phase !== 'exploring' || state.activeModal !== 'none') return;
+
+            if (state.inputMode === 'cursor') {
+                e.preventDefault();
+                state.setInputMode('camera');
+                requestLock();
+            } else {
+                requestLock();
             }
         };
 
-        document.addEventListener('pointerlockchange', onPointerLockChange);
-        return () => {
-            document.removeEventListener('pointerlockchange', onPointerLockChange);
-            exitLock();
-        };
-    }, [gl, phase, inputMode, activeModal, setInputMode]);
-
-    // Global Keyboard & Mouse Listener (Mode Toggling)
-    useEffect(() => {
-        const dom = gl.domElement;
-
+        // Toggle between Camera Mode & Cursor Mode using Alt or Escape
         const onKeyDown = (e: KeyboardEvent) => {
-            if (phase !== 'exploring') return;
+            if (e.repeat) return;
+            const state = useGameStore.getState();
+            if (state.phase !== 'exploring') return;
 
-            // ALT Toggles between Mode A (Camera) and Mode B (Cursor)
             if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
                 e.preventDefault();
-                toggleInputMode();
-            }
-        };
-
-        // Clicking the 3D World in Cursor Mode returns to Camera Mode
-        const onCanvasMouseDown = (e: MouseEvent) => {
-            if (phase !== 'exploring') return;
-            if (useGameStore.getState().activeModal !== 'none') return;
-
-            if (useGameStore.getState().inputMode === 'CURSOR') {
-                // Return to camera mode
-                setInputMode('CAMERA');
+                // Toggle input mode cleanly
+                state.toggleInputMode();
+            } else if (e.key === 'Escape' && state.inputMode === 'camera') {
                 e.preventDefault();
+                state.setInputMode('cursor');
             }
         };
 
+        const onPointerLockChange = () => {
+            const locked = document.pointerLockElement === dom;
+            const state = useGameStore.getState();
+            // If the browser exited pointer lock via Escape, ensure state switches to cursor mode
+            if (!locked && state.inputMode === 'camera' && state.activeModal === 'none') {
+                state.setInputMode('cursor');
+            }
+        };
+
+        // Camera Rotation: Strictly active in MODE A (Camera Mode), frozen in MODE B (Cursor Mode)
         const onMouseMove = (e: MouseEvent) => {
             const state = useGameStore.getState();
-            // CRITICAL FIX: In Mode B (CURSOR) or when a modal is open, mouse movement is COMPLETELY ignored by the camera
             if (
                 state.phase !== 'exploring' ||
-                state.inputMode !== 'CAMERA' ||
+                state.inputMode !== 'camera' ||
                 state.activeModal !== 'none'
             ) {
-                return;
+                return; // Zero camera movement while in cursor mode
             }
 
             const sensitivity = 0.0028;
-            const dx = e.movementX || 0;
-            const dy = e.movementY || 0;
+            const dx = e.movementX;
+            const dy = e.movementY;
 
-            // Spike suppression
+            // Filter extreme browser pointer attach spikes
             if (Math.abs(dx) > 300 || Math.abs(dy) > 300) return;
 
             playerTelemetry.cameraYaw -= dx * sensitivity;
@@ -124,8 +120,7 @@ export const ThirdPersonCamera: React.FC = () => {
 
         const onWheel = (e: WheelEvent) => {
             const state = useGameStore.getState();
-            if (state.phase !== 'exploring' || state.inputMode !== 'CAMERA') return;
-
+            if (state.phase !== 'exploring' || state.inputMode !== 'camera') return;
             playerTelemetry.cameraDistance = THREE.MathUtils.clamp(
                 playerTelemetry.cameraDistance + e.deltaY * 0.004,
                 2.6,
@@ -133,18 +128,20 @@ export const ThirdPersonCamera: React.FC = () => {
             );
         };
 
+        dom.addEventListener('click', onCanvasClick);
         window.addEventListener('keydown', onKeyDown);
-        dom.addEventListener('mousedown', onCanvasMouseDown);
+        document.addEventListener('pointerlockchange', onPointerLockChange);
         window.addEventListener('mousemove', onMouseMove);
         dom.addEventListener('wheel', onWheel, { passive: true });
 
         return () => {
+            dom.removeEventListener('click', onCanvasClick);
             window.removeEventListener('keydown', onKeyDown);
-            dom.removeEventListener('mousedown', onCanvasMouseDown);
+            document.removeEventListener('pointerlockchange', onPointerLockChange);
             window.removeEventListener('mousemove', onMouseMove);
             dom.removeEventListener('wheel', onWheel);
         };
-    }, [gl, phase, setInputMode, toggleInputMode]);
+    }, [gl, phase, inputMode, activeModal, setInputMode]);
 
     useFrame((state, rawDelta) => {
         if (phase !== 'exploring') return;
@@ -152,7 +149,7 @@ export const ThirdPersonCamera: React.FC = () => {
 
         const [px, py, pz] = playerTelemetry.position;
 
-        // Follow character shoulder/head pivot smoothly
+        // Follow character pivot smoothly
         const desiredPivot = new THREE.Vector3(px, py + 1.56, pz);
         currentPivot.current.lerp(desiredPivot, Math.min(1, delta * 13));
 
@@ -170,7 +167,7 @@ export const ThirdPersonCamera: React.FC = () => {
             .clone()
             .addScaledVector(offsetDir, desiredDist);
 
-        // Multi-Probe Whisker Obstacle Collision
+        // Multi-Probe Collision handling (whiskers against obstacles)
         const rightWhisker = new THREE.Vector3(
             Math.cos(yaw),
             0,
@@ -205,7 +202,7 @@ export const ThirdPersonCamera: React.FC = () => {
         );
         let targetSafeDist = Math.max(MIN_DISTANCE, desiredDist * safeFraction);
 
-        // Terrain slope avoidance
+        // Prevent ground clipping
         for (const sampleT of [0.35, 0.68, 1.0]) {
             const testPos = currentPivot.current
                 .clone()

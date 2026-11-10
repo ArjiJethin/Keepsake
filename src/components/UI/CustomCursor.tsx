@@ -10,8 +10,9 @@ export const CustomCursor: React.FC = () => {
 
     const cursorRef = useRef<HTMLDivElement>(null);
 
+    // Custom botanical cursor is only active in Cursor Mode or during UI modals / loading
     const showBotanicalCursor =
-        phase !== 'exploring' || inputMode === 'CURSOR' || activeModal !== 'none';
+        phase !== 'exploring' || inputMode === 'cursor' || activeModal !== 'none';
 
     useEffect(() => {
         const onMouseMove = (e: MouseEvent) => {
@@ -37,7 +38,7 @@ export const CustomCursor: React.FC = () => {
     return (
         <div
             ref={cursorRef}
-            className={`keepsake-botanical-cursor ${inputMode === 'CURSOR' ? 'keepsake-botanical-cursor--alt-active' : ''
+            className={`keepsake-botanical-cursor ${inputMode === 'cursor' ? 'keepsake-botanical-cursor--alt-active' : ''
                 }`}
             aria-hidden="true"
         >
@@ -81,8 +82,8 @@ export const CustomCursor: React.FC = () => {
                     <circle cx="3.5" cy="3.5" r="2.2" fill="#ffd87d" />
                 </g>
             </svg>
-            {inputMode === 'CURSOR' && (
-                <span className="cursor-mode-tag">UI Mode (Alt to resume look)</span>
+            {inputMode === 'cursor' && (
+                <span className="cursor-mode-tag">UI Mode [Alt]</span>
             )}
         </div>
     );

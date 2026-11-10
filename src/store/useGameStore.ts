@@ -9,8 +9,6 @@ export type AppPhase = 'loading' | 'intro' | 'exploring';
 export type IntroStage = 1 | 2 | 3 | 4 | 5 | 6;
 export type QualityPreset = 'high' | 'low';
 export type CharacterArchetype = 'female' | 'male';
-export type InputMode = 'CAMERA' | 'CURSOR';
-
 export type ActiveModal =
     | 'none'
     | 'memory'
@@ -18,6 +16,8 @@ export type ActiveModal =
     | 'friends'
     | 'settings'
     | 'createMemory';
+
+export type InputMode = 'camera' | 'cursor';
 
 export const playerTelemetry = {
     position: [0, 0, 7.5] as [number, number, number],
@@ -29,7 +29,8 @@ export const playerTelemetry = {
     isGrounded: true,
     moveState: 'idle' as 'idle' | 'walk' | 'run' | 'jump',
     nearestMemoryDistance: 999,
-    nearestMemoryId: null as string | null,
+    nearestMemoryPosition: [0, 0, 0] as [number, number, number],
+    nearestMemoryRadiance: 0, // 0 (normal muted world) -> 1 (full golden vibrancy)
 };
 
 interface GameState {
@@ -42,30 +43,34 @@ interface GameState {
     quality: QualityPreset;
     toggleQuality: () => void;
 
-    characterModel: CharacterArchetype;
-    setCharacterModel: (model: CharacterArchetype) => void;
-    toggleCharacterModel: () => void;
-
-    // Mutually Exclusive Input State (Mode A vs Mode B)
+    // Input Mode FSM (Mutually exclusive: camera mode vs cursor mode)
     inputMode: InputMode;
     setInputMode: (mode: InputMode) => void;
     toggleInputMode: () => void;
 
-    // World Generation & Pre-warm Readiness
-    worldReady: boolean;
-    setWorldReady: (ready: boolean) => void;
+    // Character selection
+    characterModel: CharacterArchetype;
+    setCharacterModel: (model: CharacterArchetype) => void;
+    toggleCharacterModel: () => void;
+
+    // Terrain generation & ready state
+    isInitialTerrainReady: boolean;
+    setInitialTerrainReady: (ready: boolean) => void;
     activeChunkCoord: [number, number];
     setActiveChunkCoord: (coord: [number, number]) => void;
 
-    // Persistent Memories & Radiance Dynamics
+    // Persistent memory storage
     persistentMemories: MemoryItem[];
     registerPersistentMemories: (memories: MemoryItem[]) => void;
     advanceMemoryGrowth: (id: string) => void;
+    addNewMemory: (memory: MemoryItem) => void;
 
+    // Landmark zones
     landmarkZones: EnvironmentLandmarkZone[];
     nearbyZone: EnvironmentLandmarkZone | null;
     setNearbyZone: (zone: EnvironmentLandmarkZone | null) => void;
 
+    // Memory interaction
     nearbyMemory: MemoryItem | null;
     setNearbyMemory: (memory: MemoryItem | null) => void;
 
@@ -76,9 +81,6 @@ interface GameState {
     activeEchoId: string | null;
     setActiveEchoId: (id: string | null) => void;
 
-    lastInteractedId: string | null;
-    triggerMemoryPulse: (id: string) => void;
-
     activeModal: ActiveModal;
     setActiveModal: (modal: ActiveModal) => void;
 
@@ -88,7 +90,12 @@ interface GameState {
 
 export const useGameStore = create<GameState>((set) => ({
     phase: 'loading',
-    setPhase: (phase) => set({ phase }),
+    setPhase: (phase) =>
+        set({
+            phase,
+            // Automatically enter camera mode upon transitioning to exploring
+            inputMode: phase === 'exploring' ? 'camera' : 'cursor',
+        }),
 
     introStage: 1,
     setIntroStage: (introStage) => set({ introStage }),
@@ -99,6 +106,13 @@ export const useGameStore = create<GameState>((set) => ({
             quality: state.quality === 'high' ? 'low' : 'high',
         })),
 
+    inputMode: 'cursor',
+    setInputMode: (inputMode) => set({ inputMode }),
+    toggleInputMode: () =>
+        set((state) => ({
+            inputMode: state.inputMode === 'camera' ? 'cursor' : 'camera',
+        })),
+
     characterModel: 'female',
     setCharacterModel: (characterModel) => set({ characterModel }),
     toggleCharacterModel: () =>
@@ -106,15 +120,9 @@ export const useGameStore = create<GameState>((set) => ({
             characterModel: state.characterModel === 'female' ? 'male' : 'female',
         })),
 
-    inputMode: 'CAMERA',
-    setInputMode: (inputMode) => set({ inputMode }),
-    toggleInputMode: () =>
-        set((state) => ({
-            inputMode: state.inputMode === 'CAMERA' ? 'CURSOR' : 'CAMERA',
-        })),
-
-    worldReady: false,
-    setWorldReady: (worldReady) => set({ worldReady }),
+    isInitialTerrainReady: false,
+    setInitialTerrainReady: (isInitialTerrainReady) =>
+        set({ isInitialTerrainReady }),
 
     activeChunkCoord: [0, 0],
     setActiveChunkCoord: (coord) =>
@@ -156,13 +164,19 @@ export const useGameStore = create<GameState>((set) => ({
             }),
         })),
 
+    addNewMemory: (memory) =>
+        set((state) => ({
+            persistentMemories: [memory, ...state.persistentMemories],
+            discoveredIds: [...state.discoveredIds, memory.id],
+        })),
+
     landmarkZones: [
         {
             id: 'zone-sakura-kinship',
             name: 'Great Sakura Memory Tree',
             zoneType: 'memory_tree',
             position: [6.2, 0, 2.2],
-            radius: 5.5,
+            radius: 6.0,
             description: 'An ancient blossom tree preserving chapters of shared kinship.',
             associatedCollectionId: 'chapter-kinship',
             unlocked: true,
@@ -172,7 +186,7 @@ export const useGameStore = create<GameState>((set) => ({
             name: 'Threshold of Hidden Pathways',
             zoneType: 'hidden_pathway',
             position: [-6.8, 0, -3.5],
-            radius: 4.8,
+            radius: 5.2,
             description: 'A moss-draped stone gate leading toward distant memory valleys.',
             associatedCollectionId: 'chapter-journeys',
             unlocked: true,
@@ -182,7 +196,7 @@ export const useGameStore = create<GameState>((set) => ({
             name: 'Stillwater Reflection Glade',
             zoneType: 'reflection_pond',
             position: [-1.5, 0, -14.5],
-            radius: 5.0,
+            radius: 5.5,
             description: 'A quiet hollow where past seasons ripple across the surface.',
             unlocked: true,
         },
@@ -207,8 +221,7 @@ export const useGameStore = create<GameState>((set) => ({
             activeMemory: memory,
             activeEchoId: memory.id,
             activeModal: 'memory',
-            inputMode: 'CURSOR',
-            lastInteractedId: memory.id,
+            inputMode: 'cursor', // Opening memory viewer immediately enables cursor mode
             discoveredIds: state.discoveredIds.includes(memory.id)
                 ? state.discoveredIds
                 : [...state.discoveredIds, memory.id],
@@ -218,20 +231,17 @@ export const useGameStore = create<GameState>((set) => ({
             activeMemory: null,
             activeEchoId: null,
             activeModal: 'none',
-            inputMode: 'CAMERA',
+            inputMode: 'camera', // Closing returns directly to camera mode
         }),
 
     activeEchoId: null,
     setActiveEchoId: (activeEchoId) => set({ activeEchoId }),
 
-    lastInteractedId: null,
-    triggerMemoryPulse: (id) => set({ lastInteractedId: id }),
-
     activeModal: 'none',
-    setActiveModal: (modal) =>
+    setActiveModal: (activeModal) =>
         set({
-            activeModal: modal,
-            inputMode: modal === 'none' ? 'CAMERA' : 'CURSOR',
+            activeModal,
+            inputMode: activeModal === 'none' ? 'camera' : 'cursor',
         }),
 
     discoveredIds: [],
