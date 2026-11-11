@@ -25,12 +25,21 @@ export interface AssetManifestEntry {
 export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
     {
         id: 'memory-wanderer',
-        name: 'The Memory Wanderer (Protagonist)',
+        name: 'The Memory Wanderer — Female (Protagonist)',
         category: 'characters',
         filename: 'public/KeepSakeFemale-v2-animated.glb',
         dimensions: '0.88m × 1.74m × 0.72m',
         worldCoords: [0, 7.5],
-        intendedUse: 'Main single-player rigged explorer (KeepSakeFemale-v2-animated.glb) with Walk_2, Sprint, and Jump_2_RM animations.',
+        intendedUse: 'Single-player rigged female explorer (KeepSakeFemale-v2-animated.glb) with Walk_2, Sprint, and Jump_2_RM animations.',
+    },
+    {
+        id: 'memory-wanderer-male',
+        name: 'The Memory Wanderer — Male (Protagonist)',
+        category: 'characters',
+        filename: 'public/KeepSakeMale-v2-animated.glb',
+        dimensions: '0.70m × 1.74m × 0.47m',
+        worldCoords: [0, 7.5],
+        intendedUse: 'Single-player rigged male explorer (KeepSakeMale-v2-animated.glb) with Walk, Sprint, and Jump_2_RM animations.',
     },
     {
         id: 'grand-memory-portal',

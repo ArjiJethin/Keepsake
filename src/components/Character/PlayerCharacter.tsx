@@ -13,14 +13,15 @@ import {
     FemaleWandererGLB,
     type WandererAnimState,
 } from './FemaleWandererGLB';
+import { MaleWandererGLB } from './MaleWandererGLB';
 
 const GRAVITY = -22.0;
 const JUMP_VELOCITY = 7.6;
 
 /**
  * Movement speeds calibrated to match the physical stride length of
- * KeepSakeFemale-v2-animated.glb (Walk_2 and Sprint clips) while feeling
- * responsive and fluid across the garden.
+ * KeepSakeFemale-v2-animated.glb and KeepSakeMale-v2-animated.glb
+ * while feeling responsive and fluid across the garden.
  */
 const WALK_SPEED = 2.65;
 const RUN_SPEED = 5.85;
@@ -64,10 +65,15 @@ function getFootContactTerrainHeight(
 }
 
 class CharacterGLBErrorBoundary extends React.Component<
-    { fallback: React.ReactNode; children: React.ReactNode },
+    {
+        modelName: string;
+        fallback: React.ReactNode;
+        children: React.ReactNode;
+    },
     { hasError: boolean }
 > {
     constructor(props: {
+        modelName: string;
         fallback: React.ReactNode;
         children: React.ReactNode;
     }) {
@@ -81,7 +87,7 @@ class CharacterGLBErrorBoundary extends React.Component<
 
     componentDidCatch(error: unknown) {
         console.error(
-            '[Keepsake] Failed to load /KeepSakeFemale-v2-animated.glb. Ensure the file is placed in public/KeepSakeFemale-v2-animated.glb.',
+            `[Keepsake] Failed to load ${this.props.modelName}. Ensure the GLB file is placed in public/.`,
             error
         );
     }
@@ -107,7 +113,7 @@ export const PlayerCharacter: React.FC = () => {
     const lastSyncMoveStateRef = useRef<WandererAnimState>('idle');
     const lastSyncGroundedRef = useRef<boolean>(true);
 
-    // Articulated Rig References for Male / Fallback ExplorerModelMesh
+    // Articulated Rig References for Procedural Fallback ExplorerModelMesh
     const bodyGroup = useRef<THREE.Group>(null);
     const headGroup = useRef<THREE.Group>(null);
     const ponchoGroup = useRef<THREE.Group>(null);
@@ -285,7 +291,6 @@ export const PlayerCharacter: React.FC = () => {
             nextZ,
             playerTelemetry.rotationY
         );
-        // Subtle slope contact compensation so the uphill/downhill foot doesn't hover on slopes
         const slopeContactSink = (1.0 - surfaceNormal.y) * 0.075;
         const effectiveGroundHeight = rawGroundHeight - slopeContactSink;
 
@@ -298,7 +303,6 @@ export const PlayerCharacter: React.FC = () => {
             nextY - effectiveGroundHeight < 0.42 &&
             velocity.current.y <= 0
         ) {
-            // Adhere smoothly when walking/sprinting downhill
             nextY = effectiveGroundHeight;
             velocity.current.y = 0;
         } else {
@@ -367,8 +371,19 @@ export const PlayerCharacter: React.FC = () => {
             setIsGroundedState(playerTelemetry.isGrounded);
         }
 
-        // 8. Procedural Rig Animation for Male Archetype / Fallback Mesh
-        if (characterModel === 'male') {
+        // 8. Procedural Rig Animation if Fallback Mesh is mounted during Suspense
+        if (
+            leftLegGroup.current &&
+            rightLegGroup.current &&
+            leftArmGroup.current &&
+            rightArmGroup.current &&
+            bodyGroup.current &&
+            ponchoGroup.current &&
+            scarfTailGroup.current &&
+            backpackGroup.current &&
+            lanternGroup.current &&
+            headGroup.current
+        ) {
             const cycleSpeed =
                 playerTelemetry.moveState === 'run'
                     ? 12.5
@@ -379,130 +394,57 @@ export const PlayerCharacter: React.FC = () => {
             const c = animCycle.current;
             const stride = THREE.MathUtils.clamp(horizSpeed / RUN_SPEED, 0, 1);
 
-            if (
-                leftLegGroup.current &&
-                rightLegGroup.current &&
-                leftArmGroup.current &&
-                rightArmGroup.current &&
-                bodyGroup.current &&
-                ponchoGroup.current &&
-                scarfTailGroup.current &&
-                backpackGroup.current &&
-                lanternGroup.current &&
-                headGroup.current
-            ) {
-                if (!playerTelemetry.isGrounded) {
-                    leftLegGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        leftLegGroup.current.rotation.x,
-                        0.48,
-                        delta * 10
-                    );
-                    rightLegGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        rightLegGroup.current.rotation.x,
-                        -0.38,
-                        delta * 10
-                    );
-                    leftArmGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        leftArmGroup.current.rotation.x,
-                        -0.45,
-                        delta * 10
-                    );
-                    rightArmGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        rightArmGroup.current.rotation.x,
-                        0.35,
-                        delta * 10
-                    );
-                    scarfTailGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        scarfTailGroup.current.rotation.x,
-                        0.55,
-                        delta * 8
-                    );
-                    lanternGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        lanternGroup.current.rotation.x,
-                        0.38,
-                        delta * 8
-                    );
-                } else if (horizSpeed > 0.08) {
-                    const legSwing = Math.sin(c) * (0.58 * stride + 0.14);
-                    leftLegGroup.current.rotation.x = legSwing;
-                    rightLegGroup.current.rotation.x = -legSwing;
-
-                    leftArmGroup.current.rotation.x = -legSwing * 0.62;
-                    rightArmGroup.current.rotation.x = legSwing * 0.62;
-
-                    bodyGroup.current.position.y =
-                        Math.abs(Math.cos(c)) * 0.062 * stride;
-                    bodyGroup.current.rotation.x = 0.06 + stride * 0.13;
-                    bodyGroup.current.rotation.z =
-                        Math.sin(c) * 0.025 * stride;
-
-                    ponchoGroup.current.rotation.x =
-                        0.05 + stride * 0.1 + Math.sin(c * 2) * 0.03;
-                    scarfTailGroup.current.rotation.x =
-                        0.18 + stride * 0.38 + Math.sin(c * 2 + 0.6) * 0.09;
-                    scarfTailGroup.current.rotation.z =
-                        Math.cos(c) * 0.08 * stride;
-                    backpackGroup.current.position.y =
-                        1.07 + Math.sin(c * 2 - 0.5) * 0.018 * stride;
-                    lanternGroup.current.rotation.x =
-                        0.12 * stride + Math.sin(c * 2 - 0.8) * 0.18 * stride;
-                    lanternGroup.current.rotation.z =
-                        Math.cos(c) * 0.14 * stride;
-                } else {
-                    leftLegGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        leftLegGroup.current.rotation.x,
-                        0,
-                        delta * 10
-                    );
-                    rightLegGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        rightLegGroup.current.rotation.x,
-                        0,
-                        delta * 10
-                    );
-                    leftArmGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        leftArmGroup.current.rotation.x,
-                        0,
-                        delta * 10
-                    );
-                    rightArmGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        rightArmGroup.current.rotation.x,
-                        0,
-                        delta * 10
-                    );
-                    bodyGroup.current.position.y = Math.sin(c) * 0.016;
-                    bodyGroup.current.rotation.x = THREE.MathUtils.lerp(
-                        bodyGroup.current.rotation.x,
-                        0,
-                        delta * 8
-                    );
-                    bodyGroup.current.rotation.z = THREE.MathUtils.lerp(
-                        bodyGroup.current.rotation.z,
-                        0,
-                        delta * 8
-                    );
-                    ponchoGroup.current.rotation.x = Math.sin(c) * 0.015;
-                    scarfTailGroup.current.rotation.x =
-                        0.08 + Math.sin(c * 1.2) * 0.035;
-                    lanternGroup.current.rotation.x =
-                        Math.sin(c * 1.1) * 0.04;
-                    lanternGroup.current.rotation.z =
-                        Math.cos(c * 0.9) * 0.03;
-                    headGroup.current.rotation.y =
-                        Math.sin(c * 0.45) * 0.07;
-                }
-            }
-
-            if (lanternLight.current) {
-                const memDist = playerTelemetry.nearestMemoryDistance;
-                const proximityBoost =
-                    memDist < 7.0
-                        ? Math.pow(1 - memDist / 7.0, 1.5) * 2.2
-                        : 0;
-                lanternLight.current.intensity = THREE.MathUtils.lerp(
-                    lanternLight.current.intensity,
-                    1.1 + proximityBoost,
-                    delta * 6
+            if (!playerTelemetry.isGrounded) {
+                leftLegGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    leftLegGroup.current.rotation.x,
+                    0.48,
+                    delta * 10
                 );
+                rightLegGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    rightLegGroup.current.rotation.x,
+                    -0.38,
+                    delta * 10
+                );
+                leftArmGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    leftArmGroup.current.rotation.x,
+                    -0.45,
+                    delta * 10
+                );
+                rightArmGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    rightArmGroup.current.rotation.x,
+                    0.35,
+                    delta * 10
+                );
+            } else if (horizSpeed > 0.08) {
+                const legSwing = Math.sin(c) * (0.58 * stride + 0.14);
+                leftLegGroup.current.rotation.x = legSwing;
+                rightLegGroup.current.rotation.x = -legSwing;
+                leftArmGroup.current.rotation.x = -legSwing * 0.62;
+                rightArmGroup.current.rotation.x = legSwing * 0.62;
+                bodyGroup.current.position.y =
+                    Math.abs(Math.cos(c)) * 0.062 * stride;
+            } else {
+                leftLegGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    leftLegGroup.current.rotation.x,
+                    0,
+                    delta * 10
+                );
+                rightLegGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    rightLegGroup.current.rotation.x,
+                    0,
+                    delta * 10
+                );
+                leftArmGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    leftArmGroup.current.rotation.x,
+                    0,
+                    delta * 10
+                );
+                rightArmGroup.current.rotation.x = THREE.MathUtils.lerp(
+                    rightArmGroup.current.rotation.x,
+                    0,
+                    delta * 10
+                );
+                bodyGroup.current.position.y = Math.sin(c) * 0.016;
             }
         }
     });
@@ -516,7 +458,11 @@ export const PlayerCharacter: React.FC = () => {
     return (
         <group ref={rootRef} position={[0, 0, 7.5]} rotation={[0, Math.PI, 0]}>
             {characterModel === 'female' ? (
-                <CharacterGLBErrorBoundary fallback={fallbackExplorer}>
+                <CharacterGLBErrorBoundary
+                    key="female-glb-boundary"
+                    modelName="/KeepSakeFemale-v2-animated.glb"
+                    fallback={fallbackExplorer}
+                >
                     <Suspense fallback={fallbackExplorer}>
                         <FemaleWandererGLB
                             moveState={animMoveState}
@@ -528,7 +474,21 @@ export const PlayerCharacter: React.FC = () => {
                     </Suspense>
                 </CharacterGLBErrorBoundary>
             ) : (
-                fallbackExplorer
+                <CharacterGLBErrorBoundary
+                    key="male-glb-boundary"
+                    modelName="/KeepSakeMale-v2-animated.glb"
+                    fallback={fallbackExplorer}
+                >
+                    <Suspense fallback={fallbackExplorer}>
+                        <MaleWandererGLB
+                            moveState={animMoveState}
+                            horizSpeed={0}
+                            isGrounded={isGroundedState}
+                            walkSpeedRef={WALK_SPEED}
+                            runSpeedRef={RUN_SPEED}
+                        />
+                    </Suspense>
+                </CharacterGLBErrorBoundary>
             )}
         </group>
     );

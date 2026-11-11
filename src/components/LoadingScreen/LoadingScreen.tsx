@@ -386,7 +386,7 @@ export const LoadingScreen: React.FC = () => {
                                     onClick={() => setCharacterModel('male')}
                                 >
                                     <span className="explorer-choice-dot" />
-                                    <span>Male Explorer (Brass Lantern & Goggles)</span>
+                                    <span>The Memory Wanderer (Animated Male GLB)</span>
                                 </button>
                             </div>
 
