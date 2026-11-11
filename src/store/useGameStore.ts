@@ -4,6 +4,13 @@ import type {
     EnvironmentLandmarkZone,
     MemoryItem,
 } from '../systems/MemoryManager/memoryTypes';
+import {
+    type BiomeType,
+    generateNewSeedString,
+    getGardenTerrainHeight,
+    getWorldSeed,
+    setWorldSeedGlobal,
+} from '../scenes/Environment/lowPolyUtils';
 
 export type AppPhase = 'loading' | 'intro' | 'exploring';
 export type IntroStage = 1 | 2 | 3 | 4 | 5 | 6;
@@ -43,6 +50,13 @@ interface GameState {
     quality: QualityPreset;
     toggleQuality: () => void;
 
+    // Deterministic World Seed & Biome State
+    worldSeed: string;
+    setWorldSeed: (seed: string) => void;
+    regenerateWorldSeed: () => string;
+    currentBiome: BiomeType;
+    setCurrentBiome: (biome: BiomeType) => void;
+
     // Input Mode FSM (Mutually exclusive: camera mode vs cursor mode)
     inputMode: InputMode;
     setInputMode: (mode: InputMode) => void;
@@ -61,12 +75,13 @@ interface GameState {
 
     // Persistent memory storage
     persistentMemories: MemoryItem[];
-    registerPersistentMemories: (memories: MemoryItem[]) => void;
+    registerPersistentMemories: (memories: MemoryItem[], forceReplace?: boolean) => void;
     advanceMemoryGrowth: (id: string) => void;
     addNewMemory: (memory: MemoryItem) => void;
 
     // Landmark zones
     landmarkZones: EnvironmentLandmarkZone[];
+    setLandmarkZones: (zones: EnvironmentLandmarkZone[]) => void;
     nearbyZone: EnvironmentLandmarkZone | null;
     setNearbyZone: (zone: EnvironmentLandmarkZone | null) => void;
 
@@ -106,6 +121,50 @@ export const useGameStore = create<GameState>((set) => ({
             quality: state.quality === 'high' ? 'low' : 'high',
         })),
 
+    worldSeed: getWorldSeed(),
+    setWorldSeed: (newSeed: string) => {
+        const applied = setWorldSeedGlobal(newSeed);
+        const spawnY = getGardenTerrainHeight(0, 7.5);
+        playerTelemetry.position = [0, spawnY, 7.5];
+        playerTelemetry.velocity = [0, 0, 0];
+        playerTelemetry.rotationY = Math.PI;
+        set({
+            worldSeed: applied,
+            activeChunkCoord: [0, 0],
+            currentBiome: 'memory_sanctuary',
+            nearbyMemory: null,
+            nearbyZone: null,
+            activeMemory: null,
+            activeEchoId: null,
+        });
+    },
+    regenerateWorldSeed: () => {
+        const generated = generateNewSeedString();
+        const applied = setWorldSeedGlobal(generated);
+        const spawnY = getGardenTerrainHeight(0, 7.5);
+        playerTelemetry.position = [0, spawnY, 7.5];
+        playerTelemetry.velocity = [0, 0, 0];
+        playerTelemetry.rotationY = Math.PI;
+        set({
+            worldSeed: applied,
+            activeChunkCoord: [0, 0],
+            currentBiome: 'memory_sanctuary',
+            nearbyMemory: null,
+            nearbyZone: null,
+            activeMemory: null,
+            activeEchoId: null,
+            discoveredIds: [],
+        });
+        return applied;
+    },
+
+    currentBiome: 'memory_sanctuary',
+    setCurrentBiome: (biome) =>
+        set((state) => {
+            if (state.currentBiome === biome) return state;
+            return { currentBiome: biome };
+        }),
+
     inputMode: 'cursor',
     setInputMode: (inputMode) => set({ inputMode }),
     toggleInputMode: () =>
@@ -137,9 +196,9 @@ export const useGameStore = create<GameState>((set) => ({
         }),
 
     persistentMemories: [],
-    registerPersistentMemories: (memories) =>
+    registerPersistentMemories: (memories, forceReplace = false) =>
         set((state) => {
-            if (state.persistentMemories.length > 0) return state;
+            if (state.persistentMemories.length > 0 && !forceReplace) return state;
             return { persistentMemories: memories };
         }),
 
@@ -195,12 +254,13 @@ export const useGameStore = create<GameState>((set) => ({
             id: 'zone-reflection-basin',
             name: 'Stillwater Reflection Glade',
             zoneType: 'reflection_pond',
-            position: [-1.5, 0, -14.5],
+            position: [-5.8, 0, -14.2],
             radius: 5.5,
             description: 'A quiet hollow where past seasons ripple across the surface.',
             unlocked: true,
         },
     ],
+    setLandmarkZones: (landmarkZones) => set({ landmarkZones }),
     nearbyZone: null,
     setNearbyZone: (zone) =>
         set((state) => {

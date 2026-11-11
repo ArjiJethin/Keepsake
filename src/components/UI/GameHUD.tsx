@@ -13,9 +13,15 @@ import {
     Compass,
     Layers,
     Navigation,
+    RefreshCw,
+    Hash,
+    Check,
 } from 'lucide-react';
 import { playerTelemetry, useGameStore } from '../../store/useGameStore';
-import { getGardenTerrainHeight } from '../../scenes/Environment/lowPolyUtils';
+import {
+    BIOME_CONFIGS,
+    getGardenTerrainHeight,
+} from '../../scenes/Environment/lowPolyUtils';
 import {
     KEEPSAKE_ASSET_MANIFEST,
     type AssetManifestEntry,
@@ -40,13 +46,26 @@ export const GameHUD: React.FC = () => {
     );
     const nearbyZone = useGameStore((state) => state.nearbyZone);
     const activeChunkCoord = useGameStore((state) => state.activeChunkCoord);
+    const worldSeed = useGameStore((state) => state.worldSeed);
+    const setWorldSeed = useGameStore((state) => state.setWorldSeed);
+    const regenerateWorldSeed = useGameStore(
+        (state) => state.regenerateWorldSeed
+    );
+    const currentBiome = useGameStore((state) => state.currentBiome);
     const setPhase = useGameStore((state) => state.setPhase);
     const setIntroStage = useGameStore((state) => state.setIntroStage);
 
     const [showAssetCatalog, setShowAssetCatalog] = useState(false);
+    const [isEditingSeed, setIsEditingSeed] = useState(false);
+    const [seedDraft, setSeedDraft] = useState(worldSeed);
+
+    useEffect(() => {
+        setSeedDraft(worldSeed);
+    }, [worldSeed]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
+            if (isEditingSeed) return;
             if (
                 e.code === 'KeyC' &&
                 phase === 'exploring' &&
@@ -57,13 +76,15 @@ export const GameHUD: React.FC = () => {
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [phase, toggleCharacterModel]);
+    }, [phase, toggleCharacterModel, isEditingSeed]);
 
     if (phase !== 'exploring') return null;
 
     const currentMemoryData = activeMemory
         ? persistentMemories.find((m) => m.id === activeMemory.id) || activeMemory
         : null;
+
+    const activeBiomeMeta = BIOME_CONFIGS[currentBiome];
 
     const handleReplayIntro = () => {
         closeMemory();
@@ -81,9 +102,24 @@ export const GameHUD: React.FC = () => {
         setInputMode('camera');
     };
 
+    const handleApplyCustomSeed = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (seedDraft.trim().length > 0) {
+            setWorldSeed(seedDraft.trim());
+        }
+        setIsEditingSeed(false);
+        setInputMode('camera');
+    };
+
+    const handleRegenerateWorld = () => {
+        const nextSeed = regenerateWorldSeed();
+        setSeedDraft(nextSeed);
+        setIsEditingSeed(false);
+    };
+
     return (
         <div className="keepsake-hud-layer">
-            {/* Top-Left Keepsake Brand Logo & World Status */}
+            {/* Top-Left Keepsake Brand Logo, World Seed & Biome Status */}
             <div className="hud-top-left">
                 <div
                     className="hud-brand-logo"
@@ -111,6 +147,10 @@ export const GameHUD: React.FC = () => {
                             {persistentMemories.length}
                         </span>
                     </div>
+                    <div className="hud-discovery-pill hud-biome-pill">
+                        <Sprout size={13} />
+                        <span>{activeBiomeMeta.name}</span>
+                    </div>
                     <div className="hud-discovery-pill hud-chunk-pill">
                         <Compass size={13} />
                         <span>
@@ -118,16 +158,81 @@ export const GameHUD: React.FC = () => {
                         </span>
                     </div>
                 </div>
+
+                {/* Deterministic World Seed Bar & Regenerate Controls */}
+                <div className="hud-seed-bar">
+                    {!isEditingSeed ? (
+                        <>
+                            <button
+                                className="hud-seed-display-btn"
+                                onClick={() => {
+                                    setIsEditingSeed(true);
+                                    setInputMode('cursor');
+                                }}
+                                title="Click to enter a custom World Seed"
+                            >
+                                <Hash size={13} />
+                                <span>Seed: {worldSeed}</span>
+                            </button>
+                            <button
+                                className="hud-seed-regen-btn"
+                                onClick={handleRegenerateWorld}
+                                title="Generate a brand-new deterministic world seed"
+                            >
+                                <RefreshCw size={13} />
+                                <span>New World</span>
+                            </button>
+                        </>
+                    ) : (
+                        <form
+                            className="hud-seed-form"
+                            onSubmit={handleApplyCustomSeed}
+                        >
+                            <input
+                                type="text"
+                                className="hud-seed-input"
+                                value={seedDraft}
+                                onChange={(e) => setSeedDraft(e.target.value)}
+                                placeholder="Enter seed..."
+                                maxLength={24}
+                                autoFocus
+                            />
+                            <button
+                                type="submit"
+                                className="hud-seed-apply-btn"
+                                title="Load this seed"
+                            >
+                                <Check size={14} />
+                            </button>
+                            <button
+                                type="button"
+                                className="hud-seed-cancel-btn"
+                                onClick={() => setIsEditingSeed(false)}
+                                title="Cancel"
+                            >
+                                <X size={14} />
+                            </button>
+                        </form>
+                    )}
+                </div>
             </div>
 
-            {/* Top-Center Landmark Zone Banner */}
-            {nearbyZone && !currentMemoryData && !showAssetCatalog && (
+            {/* Top-Center Landmark Zone or Active Biome Banner */}
+            {!currentMemoryData && !showAssetCatalog && (
                 <div className="hud-zone-banner">
                     <span className="hud-zone-type">
-                        {nearbyZone.zoneType.replace('_', ' ').toUpperCase()}
+                        {nearbyZone
+                            ? nearbyZone.zoneType.replace('_', ' ').toUpperCase()
+                            : `BIOME REGION • SEED ${worldSeed}`}
                     </span>
-                    <h3 className="hud-zone-title">{nearbyZone.name}</h3>
-                    <p className="hud-zone-desc">{nearbyZone.description}</p>
+                    <h3 className="hud-zone-title">
+                        {nearbyZone ? nearbyZone.name : activeBiomeMeta.name}
+                    </h3>
+                    <p className="hud-zone-desc">
+                        {nearbyZone
+                            ? nearbyZone.description
+                            : activeBiomeMeta.subtitle}
+                    </p>
                 </div>
             )}
 
@@ -153,10 +258,10 @@ export const GameHUD: React.FC = () => {
                         setShowAssetCatalog((prev) => !prev);
                         setInputMode('cursor');
                     }}
-                    title="Inspect 3D Asset Library in World"
+                    title="Inspect All 17 GLB Assets in World"
                 >
                     <Layers size={16} />
-                    <span>3D Assets ({KEEPSAKE_ASSET_MANIFEST.length})</span>
+                    <span>GLB Assets ({KEEPSAKE_ASSET_MANIFEST.length})</span>
                 </button>
 
                 <button
@@ -198,14 +303,14 @@ export const GameHUD: React.FC = () => {
 
                         <div className="memory-card-header">
                             <span className="memory-category-tag">
-                                REAL-TIME 3D ASSET MANIFEST
+                                VERIFIED 17-MODEL BINARY GLB MANIFEST
                             </span>
                             <h2 className="memory-card-title">
                                 Keepsake 3D World Library
                             </h2>
                             <p className="memory-card-subtitle">
-                                Click any asset below to teleport your Explorer directly
-                                to its location in the garden.
+                                Click any GLB asset below to teleport your Explorer
+                                directly to its placement in the garden.
                             </p>
                         </div>
 
@@ -351,7 +456,9 @@ export const GameHUD: React.FC = () => {
                                     </span>
                                 )}
                             </div>
-                            <h2 className="memory-card-title">{currentMemoryData.title}</h2>
+                            <h2 className="memory-card-title">
+                                {currentMemoryData.title}
+                            </h2>
                             <p className="memory-card-subtitle">
                                 {currentMemoryData.location}
                             </p>
@@ -365,7 +472,9 @@ export const GameHUD: React.FC = () => {
                                 {currentMemoryData.echo?.ambientAudioLabel && (
                                     <div className="memory-echo-audio-pill">
                                         <Volume2 size={14} />
-                                        <span>{currentMemoryData.echo.ambientAudioLabel}</span>
+                                        <span>
+                                            {currentMemoryData.echo.ambientAudioLabel}
+                                        </span>
                                     </div>
                                 )}
                             </div>
@@ -407,13 +516,18 @@ export const GameHUD: React.FC = () => {
                             {currentMemoryData.growthStage !== 'landmark' && (
                                 <button
                                     className="memory-nourish-btn"
-                                    onClick={() => advanceMemoryGrowth(currentMemoryData.id)}
+                                    onClick={() =>
+                                        advanceMemoryGrowth(currentMemoryData.id)
+                                    }
                                 >
                                     <Sprout size={16} />
                                     <span>Nourish Memory Growth</span>
                                 </button>
                             )}
-                            <button className="memory-return-btn" onClick={closeMemory}>
+                            <button
+                                className="memory-return-btn"
+                                onClick={closeMemory}
+                            >
                                 Return to the Garden
                             </button>
                         </div>

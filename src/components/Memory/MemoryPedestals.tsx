@@ -5,8 +5,11 @@ import * as THREE from 'three';
 import { THEME } from '../../styles/theme';
 import {
   ACTIVE_CHUNK_RADIUS,
+  BIOME_CONFIGS,
   CHUNK_SIZE,
+  getBiomeSampleAt,
   getGardenTerrainHeight,
+  hash2D,
 } from '../../scenes/Environment/lowPolyUtils';
 import { playerTelemetry, useGameStore } from '../../store/useGameStore';
 import type { MemoryItem } from '../../systems/MemoryManager/memoryTypes';
@@ -148,38 +151,112 @@ export const INITIAL_GARDEN_MEMORIES: MemoryItem[] = [
       writtenNote: 'A core landmark portal anchoring the northern trail.',
     },
   },
-  {
-    id: 'mem-distant-horizon-seed',
-    title: 'Echo of the Outer Meadow',
-    subtitle: 'Minimal Memory Pedestal',
-    date: 'November 9',
-    location: 'Northern Outer Valley (Chunk 0, -1)',
-    category: 'letter',
-    pedestalVariant: 'minimal',
-    importance: 'whisper',
-    growthStage: 'seed',
-    interactionState: 'dormant',
-    people: ['Traveler'],
-    groupName: 'Outer Reaches',
-    description:
-      'A Minimal Memory Pedestal nestled far down the northern trail. Even if you travel far away and unload this terrain chunk, this pedestal remains anchored to its exact world coordinates.',
-    position: [-1.8, 0, -26.0],
-    tags: ['Persistent', 'Outer Valley', 'Minimal Pedestal'],
-    echo: {
-      floatingPhotoTitle: 'Outer Meadow Vista',
-      floatingPhotoPalette: ['#9e8191', '#f7cfc4', '#68744e'],
-      voiceTranscript:
-        '"No matter how far we wander, the garden remembers where every stone was placed."',
-      ambientAudioLabel: 'High Meadow Wind',
-      writtenNote: 'Tests cross-chunk memory persistence.',
-    },
-  },
 ];
+
+/**
+ * Generates deterministic outer-biome discovery pedestals seeded by the active worldSeed.
+ */
+function buildSeededBiomeMemories(seedStr: string): MemoryItem[] {
+  const outerTemplates: Array<{
+    ringCoords: [number, number];
+    title: string;
+    category: MemoryItem['category'];
+    variant: NonNullable<MemoryItem['pedestalVariant']>;
+    importance: NonNullable<MemoryItem['importance']>;
+    quote: string;
+    audio: string;
+  }> = [
+      {
+        ringCoords: [0, -1],
+        title: 'Echo of the Northern Trail',
+        category: 'letter',
+        variant: 'minimal',
+        importance: 'whisper',
+        quote: '"No matter how far we wander, the garden remembers where every stone was placed."',
+        audio: 'High Meadow Wind & Rustling Grass',
+      },
+      {
+        ringCoords: [1, 0],
+        title: 'Blossoms of the Eastern Ridge',
+        category: 'photo',
+        variant: 'arched',
+        importance: 'milestone',
+        quote: '"The petals drift across the hilltops like warm snow at sunset."',
+        audio: 'Breeze Through Flowering Branches',
+      },
+      {
+        ringCoords: [-1, 0],
+        title: 'Whispers in the Ancient Stones',
+        category: 'shrine',
+        variant: 'grand_portal',
+        importance: 'core',
+        quote: '"Carved into the moss-covered pillar was a map of seasons yet to come."',
+        audio: 'Distant Chimes & Deep Forest Echo',
+      },
+      {
+        ringCoords: [0, 1],
+        title: 'Lantern by the Southern Camp',
+        category: 'music',
+        variant: 'minimal',
+        importance: 'cherished',
+        quote: '"We rested beside the wooden cart and listened to the embers crackle."',
+        audio: 'Campfire Embers & Acoustic Hum',
+      },
+    ];
+
+  return outerTemplates.map((tpl, idx) => {
+    const [cx, cz] = tpl.ringCoords;
+    const offsetX = (hash2D(cx, cz, 701 + idx) - 0.5) * 14;
+    const offsetZ = (hash2D(cx, cz, 719 + idx) - 0.5) * 14;
+    const wx = Number((cx * CHUNK_SIZE + offsetX).toFixed(2));
+    const wz = Number((cz * CHUNK_SIZE + offsetZ).toFixed(2));
+    const wy = getGardenTerrainHeight(wx, wz);
+    const biomeSample = getBiomeSampleAt(wx, wz);
+    const biomeCfg = BIOME_CONFIGS[biomeSample.primary];
+
+    return {
+      id: `mem-seeded-${seedStr}-${idx}`,
+      title: tpl.title,
+      subtitle:
+        tpl.variant === 'grand_portal'
+          ? 'Grand Memory Portal'
+          : tpl.variant === 'arched'
+            ? 'Arched Memory Pedestal'
+            : 'Minimal Memory Pedestal',
+      date: `Seed Epoch • ${seedStr}`,
+      location: `${biomeCfg.name} (${cx}, ${cz})`,
+      category: tpl.category,
+      pedestalVariant: tpl.variant,
+      importance: tpl.importance,
+      growthStage: tpl.variant === 'grand_portal' ? 'landmark' : 'plant',
+      interactionState: 'dormant',
+      people: ['Elena', 'Kael'],
+      groupName: biomeCfg.name,
+      description: `An intentional discovery clearing nestled within ${biomeCfg.name} (${biomeCfg.subtitle}). Deterministic coordinates anchored to world seed ${seedStr}.`,
+      position: [wx, wy, wz],
+      chunkKey: `${cx}_${cz}`,
+      rotationY: hash2D(cx, cz, 733 + idx) * Math.PI * 2,
+      tags: [biomeCfg.name, tpl.variant.replace('_', ' '), seedStr],
+      echo: {
+        floatingPhotoTitle: `${biomeCfg.name} Vista`,
+        floatingPhotoPalette: [
+          biomeCfg.baseColor,
+          biomeCfg.sunlitColor,
+          '#ffcf70',
+        ],
+        voiceTranscript: tpl.quote,
+        ambientAudioLabel: tpl.audio,
+        writtenNote: `Discovered in ${biomeCfg.name}.`,
+      },
+    };
+  });
+}
 
 const INTERACTION_RADIUS = 4.2;
 
 export const MemoryPedestals: React.FC = () => {
   const phase = useGameStore((state) => state.phase);
+  const worldSeed = useGameStore((state) => state.worldSeed);
   const activeChunkCoord = useGameStore((state) => state.activeChunkCoord);
   const persistentMemories = useGameStore((state) => state.persistentMemories);
   const registerPersistentMemories = useGameStore(
@@ -193,7 +270,6 @@ export const MemoryPedestals: React.FC = () => {
   const landmarkZones = useGameStore((state) => state.landmarkZones);
   const setNearbyZone = useGameStore((state) => state.setNearbyZone);
 
-  // Independent animation references for Crystal, Orbit Ring, Shards, Ground Ripple, and Light
   const crystalRefs = useRef<Record<string, THREE.Group | null>>({});
   const orbitRingRefs = useRef<Record<string, THREE.Mesh | null>>({});
   const shardsRefs = useRef<Record<string, THREE.Group | null>>({});
@@ -201,19 +277,25 @@ export const MemoryPedestals: React.FC = () => {
   const echoWaveRefs = useRef<Record<string, THREE.Mesh | null>>({});
   const lightRefs = useRef<Record<string, THREE.PointLight | null>>({});
 
+  // Re-anchor all sanctuary and seeded outer-biome pedestals whenever worldSeed changes
   useEffect(() => {
-    const initialized = INITIAL_GARDEN_MEMORIES.map((m) => {
+    const coreMemories = INITIAL_GARDEN_MEMORIES.map((m) => {
       const y = getGardenTerrainHeight(m.position[0], m.position[2]);
       const cx = Math.round(m.position[0] / CHUNK_SIZE);
       const cz = Math.round(m.position[2] / CHUNK_SIZE);
       return {
         ...m,
-        position: [m.position[0], y, m.position[2]] as [number, number, number],
+        position: [m.position[0], y, m.position[2]] as [
+          number,
+          number,
+          number,
+        ],
         chunkKey: `${cx}_${cz}`,
       };
     });
-    registerPersistentMemories(initialized);
-  }, [registerPersistentMemories]);
+    const outerSeeded = buildSeededBiomeMemories(worldSeed);
+    registerPersistentMemories([...coreMemories, ...outerSeeded], true);
+  }, [worldSeed, registerPersistentMemories]);
 
   const activeChunkMemories = useMemo(() => {
     const [acx, acz] = activeChunkCoord;
@@ -270,14 +352,14 @@ export const MemoryPedestals: React.FC = () => {
       const isNear = nearbyMemory?.id === mem.id;
       const isEchoing = activeEchoId === mem.id;
 
-      // 1. Animate Floating Crystal
       const crystal = crystalRefs.current[mem.id];
       if (crystal) {
-        crystal.position.y = Math.sin(t * (isNear ? 2.8 : 1.6) + i) * 0.09;
-        crystal.rotation.y += delta * (isEchoing ? 1.6 : isNear ? 1.05 : 0.45);
+        crystal.position.y =
+          Math.sin(t * (isNear ? 2.8 : 1.6) + i) * 0.09;
+        crystal.rotation.y +=
+          delta * (isEchoing ? 1.6 : isNear ? 1.05 : 0.45);
       }
 
-      // 2. Animate Golden Orbit Ring
       const ring = orbitRingRefs.current[mem.id];
       if (ring) {
         ring.rotation.z += delta * (isNear ? 1.2 : 0.5);
@@ -285,24 +367,22 @@ export const MemoryPedestals: React.FC = () => {
         ring.scale.set(s, s, s);
       }
 
-      // 3. Animate Floating Diamond Shards
       const shards = shardsRefs.current[mem.id];
       if (shards) {
         shards.rotation.y -= delta * (isNear ? 0.85 : 0.35);
         shards.position.y = Math.cos(t * 2.2 + i) * 0.05;
       }
 
-      // 4. Animate Ground Acoustic Ripple Wave
       const echoWave = echoWaveRefs.current[mem.id];
       if (echoWave) {
         const pulse = (t * 0.8 + i * 0.3) % 1;
         const s = 1 + pulse * (isEchoing ? 2.5 : 1.45);
         echoWave.scale.set(s, s, 1);
         const mat = echoWave.material as THREE.MeshBasicMaterial;
-        mat.opacity = (1 - pulse) * (isEchoing ? 0.72 : isNear ? 0.42 : 0.18);
+        mat.opacity =
+          (1 - pulse) * (isEchoing ? 0.72 : isNear ? 0.42 : 0.18);
       }
 
-      // 5. Dynamic Point Light Intensity
       const light = lightRefs.current[mem.id];
       if (light) {
         const targetIntensity = isEchoing ? 3.8 : isNear ? 2.95 : 1.5;
@@ -389,7 +469,6 @@ export const MemoryPedestals: React.FC = () => {
               />
             )}
 
-            {/* Expanding Ground Memory Pulse Ring */}
             <mesh
               ref={(el) => {
                 echoWaveRefs.current[p.id] = el;
@@ -406,7 +485,6 @@ export const MemoryPedestals: React.FC = () => {
               />
             </mesh>
 
-            {/* Warm Golden Point Light */}
             <pointLight
               ref={(el) => {
                 lightRefs.current[p.id] = el;

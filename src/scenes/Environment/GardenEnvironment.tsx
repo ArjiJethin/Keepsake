@@ -12,16 +12,20 @@ import { ChunkedTerrain } from './ChunkedTerrain';
 import { MemoryPedestals } from '../../components/Memory/MemoryPedestals';
 import { MemoryRadiance } from './MemoryRadiance';
 import { collisionManager } from '../../systems/Collision/collisionSystem';
-import { playerTelemetry } from '../../store/useGameStore';
+import { playerTelemetry, useGameStore } from '../../store/useGameStore';
 import {
     CozyStorybookCottage,
     EngravedMemoryMonument,
     ExplorerCampsite,
     GlowingButterflies,
+    MemoryFlowerGLB,
+    MonumentalBlossomTreeGLB,
+    MonumentalEvergreenTreeGLB,
     RedToriiGate,
     SpottedMushroomCluster,
     StandingMemoryBanner,
     StandingStonePillar,
+    StoneArchwayGLB,
     StylizedReflectionPond,
     WoodenArchedBridge,
     WoodenCargoCart,
@@ -31,225 +35,6 @@ import {
     WoodenSignpost,
     WoodenStraightBridge,
 } from '../../components/Environment/WorldAssetLibrary';
-
-const StoneArchwayRuin: React.FC<{
-    position: [number, number, number];
-    rotationY?: number;
-    scale?: number;
-}> = ({ position, rotationY = 0.34, scale = 1.08 }) => {
-    const ivyClusters = useMemo(() => {
-        return [
-            { pos: [-1.7, 4.9, 0.35] as [number, number, number], s: [0.9, 1.3, 0.6] as [number, number, number], seed: 11 },
-            { pos: [-1.85, 3.6, 0.42] as [number, number, number], s: [0.65, 1.5, 0.5] as [number, number, number], seed: 22 },
-            { pos: [-0.6, 5.7, 0.35] as [number, number, number], s: [1.3, 0.85, 0.65] as [number, number, number], seed: 33 },
-            { pos: [0.65, 5.5, 0.35] as [number, number, number], s: [1.1, 0.9, 0.6] as [number, number, number], seed: 44 },
-            { pos: [1.65, 4.4, 0.38] as [number, number, number], s: [0.75, 1.4, 0.55] as [number, number, number], seed: 55 },
-        ].map((item) => ({
-            ...item,
-            geo: createSculptedFacetedGeometry(0.65, 1, item.s, 0.22, item.seed),
-        }));
-    }, []);
-
-    const archBlocks = useMemo(() => {
-        const blocks: Array<{
-            pos: [number, number, number];
-            rotZ: number;
-            size: [number, number, number];
-        }> = [];
-        const count = 9;
-        const radius = 1.75;
-        for (let i = 0; i < count; i++) {
-            const angle = Math.PI - (i / (count - 1)) * Math.PI;
-            blocks.push({
-                pos: [Math.cos(angle) * radius, 3.85 + Math.sin(angle) * radius, 0],
-                rotZ: angle - Math.PI / 2,
-                size: [0.72, 0.88, 1.08],
-            });
-        }
-        return blocks;
-    }, []);
-
-    return (
-        <group position={position} rotation={[0, rotationY, 0]} scale={scale}>
-            <mesh position={[-1.75, 0.3, 0]} castShadow receiveShadow>
-                <boxGeometry args={[1.65, 0.6, 1.65]} />
-                <meshStandardMaterial color={THEME.colors.stoneShadow} roughness={0.9} flatShading />
-            </mesh>
-            <mesh position={[1.75, 0.3, 0]} castShadow receiveShadow>
-                <boxGeometry args={[1.65, 0.6, 1.65]} />
-                <meshStandardMaterial color={THEME.colors.stoneShadow} roughness={0.9} flatShading />
-            </mesh>
-
-            {[0.95, 1.85, 2.75, 3.6].map((py, idx) => (
-                <React.Fragment key={idx}>
-                    <mesh position={[-1.75, py, 0]} castShadow receiveShadow>
-                        <boxGeometry args={[1.16, 0.86, 1.15]} />
-                        <meshStandardMaterial
-                            color={idx % 2 === 0 ? THEME.colors.stoneBase : THEME.colors.stoneSunlit}
-                            roughness={0.88}
-                            flatShading
-                        />
-                    </mesh>
-                    <mesh position={[1.75, py, 0]} castShadow receiveShadow>
-                        <boxGeometry args={[1.16, 0.86, 1.15]} />
-                        <meshStandardMaterial
-                            color={idx % 2 === 1 ? THEME.colors.stoneBase : THEME.colors.stoneSunlit}
-                            roughness={0.88}
-                            flatShading
-                        />
-                    </mesh>
-                </React.Fragment>
-            ))}
-
-            {archBlocks.map((b, i) => (
-                <mesh
-                    key={`arch-${i}`}
-                    position={b.pos}
-                    rotation={[0, 0, b.rotZ]}
-                    castShadow
-                    receiveShadow
-                >
-                    <boxGeometry args={b.size} />
-                    <meshStandardMaterial
-                        color={i % 2 === 0 ? THEME.colors.stoneSunlit : THEME.colors.stoneBase}
-                        roughness={0.86}
-                        flatShading
-                    />
-                </mesh>
-            ))}
-
-            {ivyClusters.map((ivy, idx) => (
-                <mesh key={`ivy-${idx}`} geometry={ivy.geo} position={ivy.pos} castShadow>
-                    <meshStandardMaterial
-                        color={idx % 2 === 0 ? THEME.colors.ivyGreen : THEME.colors.ivyLight}
-                        roughness={0.85}
-                        flatShading
-                    />
-                </mesh>
-            ))}
-        </group>
-    );
-};
-
-const GiantSakuraTree: React.FC<{ position: [number, number, number] }> = ({
-    position,
-}) => {
-    const banner1Ref = useRef<THREE.Group>(null);
-    const banner2Ref = useRef<THREE.Group>(null);
-    const canopyGroupRef = useRef<THREE.Group>(null);
-
-    const blossomClusters = useMemo(() => {
-        const specs: Array<{
-            pos: [number, number, number];
-            scale: [number, number, number];
-            radius: number;
-            color: string;
-            seed: number;
-        }> = [
-                { pos: [-3.8, 7.6, 1.4], scale: [1.65, 0.92, 1.35], radius: 1.85, color: THEME.colors.sakuraLight, seed: 101 },
-                { pos: [-2.1, 8.4, 0.8], scale: [1.85, 1.05, 1.5], radius: 2.1, color: THEME.colors.sakuraMid, seed: 102 },
-                { pos: [-0.2, 8.9, 0.2], scale: [2.1, 1.15, 1.7], radius: 2.3, color: THEME.colors.sakuraDeep, seed: 103 },
-                { pos: [1.8, 8.2, -0.4], scale: [1.9, 1.1, 1.6], radius: 2.2, color: THEME.colors.sakuraMid, seed: 104 },
-                { pos: [-4.9, 6.9, 1.9], scale: [1.35, 0.82, 1.15], radius: 1.55, color: THEME.colors.sakuraRim, seed: 105 },
-                { pos: [-2.6, 6.4, 1.8], scale: [1.45, 0.85, 1.2], radius: 1.6, color: THEME.colors.sakuraLight, seed: 106 },
-                { pos: [-1.1, 7.1, 2.2], scale: [1.5, 0.9, 1.3], radius: 1.75, color: THEME.colors.sakuraMid, seed: 107 },
-                { pos: [0.9, 6.8, 1.6], scale: [1.65, 0.95, 1.4], radius: 1.85, color: THEME.colors.sakuraDeep, seed: 108 },
-                { pos: [-3.2, 9.3, -0.3], scale: [1.6, 0.95, 1.4], radius: 1.9, color: THEME.colors.sakuraRim, seed: 109 },
-            ];
-
-        return specs.map((s) => ({
-            ...s,
-            geo: createSculptedFacetedGeometry(s.radius, 1, s.scale, 0.18, s.seed),
-        }));
-    }, []);
-
-    useFrame(({ clock }) => {
-        const t = clock.getElapsedTime();
-        if (banner1Ref.current) {
-            banner1Ref.current.rotation.z = Math.sin(t * 1.3) * 0.045 + 0.03;
-            banner1Ref.current.rotation.x = Math.cos(t * 0.9) * 0.03;
-        }
-        if (banner2Ref.current) {
-            banner2Ref.current.rotation.z = Math.sin(t * 1.3 + 1.1) * 0.05 + 0.04;
-            banner2Ref.current.rotation.x = Math.cos(t * 0.9 + 0.8) * 0.035;
-        }
-        if (canopyGroupRef.current) {
-            canopyGroupRef.current.rotation.z = Math.sin(t * 0.6) * 0.008;
-        }
-    });
-
-    return (
-        <group position={position}>
-            {[
-                { pos: [-1.1, 0.45, 0.9], rot: [0.3, 0.4, 0.48], size: [0.55, 0.95, 2.4] },
-                { pos: [-0.6, 0.35, 1.35], rot: [0.45, 0.1, 0.25], size: [0.45, 0.8, 2.1] },
-                { pos: [0.4, 0.4, 1.1], rot: [0.35, -0.2, -0.2], size: [0.5, 0.85, 2.0] },
-                { pos: [-1.3, 0.4, -0.4], rot: [-0.2, 0.5, 0.52], size: [0.5, 0.9, 2.2] },
-            ].map((r, i) => (
-                <mesh
-                    key={`root-${i}`}
-                    position={r.pos as [number, number, number]}
-                    rotation={r.rot as [number, number, number]}
-                    castShadow
-                    receiveShadow
-                >
-                    <cylinderGeometry args={[r.size[0], r.size[1], r.size[2], 6]} />
-                    <meshStandardMaterial
-                        color={i % 2 === 0 ? THEME.colors.barkHighlight : THEME.colors.barkBase}
-                        roughness={0.9}
-                        flatShading
-                    />
-                </mesh>
-            ))}
-
-            <mesh position={[0, 2.1, 0]} rotation={[0.04, 0.2, 0.12]} castShadow receiveShadow>
-                <cylinderGeometry args={[1.05, 1.65, 4.4, 7]} />
-                <meshStandardMaterial color={THEME.colors.barkBase} roughness={0.9} flatShading />
-            </mesh>
-            <mesh position={[-0.38, 4.6, 0.15]} rotation={[0.06, -0.3, 0.22]} castShadow receiveShadow>
-                <cylinderGeometry args={[0.78, 1.12, 3.2, 7]} />
-                <meshStandardMaterial color={THEME.colors.barkHighlight} roughness={0.88} flatShading />
-            </mesh>
-
-            <mesh position={[-1.95, 5.95, 0.75]} rotation={[0.18, 0.15, 0.88]} castShadow receiveShadow>
-                <cylinderGeometry args={[0.32, 0.68, 4.2, 6]} />
-                <meshStandardMaterial color={THEME.colors.barkBase} roughness={0.9} flatShading />
-            </mesh>
-            <mesh position={[-3.7, 7.1, 1.3]} rotation={[0.15, 0.1, 1.12]} castShadow receiveShadow>
-                <cylinderGeometry args={[0.18, 0.34, 2.8, 6]} />
-                <meshStandardMaterial color={THEME.colors.barkShadow} roughness={0.9} flatShading />
-            </mesh>
-
-            <group ref={banner1Ref} position={[-2.25, 5.65, 0.92]}>
-                <mesh position={[0, -0.95, 0]} castShadow>
-                    <boxGeometry args={[0.68, 1.45, 0.03]} />
-                    <meshStandardMaterial color={THEME.colors.bannerFabric} roughness={0.85} flatShading />
-                </mesh>
-            </group>
-
-            <group ref={banner2Ref} position={[-1.25, 5.2, 0.65]}>
-                <mesh position={[0, -0.82, 0]} castShadow>
-                    <boxGeometry args={[0.56, 1.22, 0.03]} />
-                    <meshStandardMaterial color="#cfa87e" roughness={0.85} flatShading />
-                </mesh>
-            </group>
-
-            <group ref={canopyGroupRef}>
-                {blossomClusters.map((c, idx) => (
-                    <mesh
-                        key={`blossom-${idx}`}
-                        geometry={c.geo}
-                        position={c.pos}
-                        castShadow
-                        receiveShadow
-                    >
-                        <meshStandardMaterial color={c.color} roughness={0.78} flatShading />
-                    </mesh>
-                ))}
-            </group>
-        </group>
-    );
-};
 
 const WorldSpaceBlossomPetals: React.FC = () => {
     const instancedRef = useRef<THREE.InstancedMesh>(null);
@@ -414,80 +199,118 @@ const HorizonVista: React.FC = () => {
 };
 
 export const GardenEnvironment: React.FC = () => {
-    const h = (x: number, z: number) => getGardenTerrainHeight(x, z);
+    const worldSeed = useGameStore((state) => state.worldSeed);
 
-    const archY = useMemo(() => h(-6.8, -3.5), []);
-    const sakuraY = useMemo(() => h(6.2, 2.2), []);
-    const cottageY = useMemo(() => h(11.5, -6.5), []);
-    const toriiY = useMemo(() => h(-0.6, -10.2), []);
-    const pondY = useMemo(() => h(-5.8, -14.2), []);
-    const campY = useMemo(() => h(6.8, -13.5), []);
+    // Recompute Sanctuary landmark terrain heights whenever worldSeed changes
+    const coords = useMemo(() => {
+        const h = (x: number, z: number) => getGardenTerrainHeight(x, z);
+        return {
+            archY: h(-6.8, -3.5),
+            sakuraY: h(6.2, 2.2),
+            evergreenY: h(-11.5, 4.8),
+            cottageY: h(11.5, -6.5),
+            toriiY: h(-0.6, -10.2),
+            pondY: h(-5.8, -14.2),
+            campY: h(6.8, -13.5),
+            pillar1Y: h(-9.5, -1.2),
+            pillar2Y: h(-8.2, -6.5),
+            bridge2Y: h(4.2, -9.2),
+            noticeY: h(-2.4, 6.2),
+            monumentY: h(-5.6, 4.6),
+            banner1Y: h(1.1, -9.6),
+            banner2Y: h(-2.3, -9.6),
+            lamp1Y: h(1.8, 7.6),
+            lamp2Y: h(-1.9, 0.2),
+            lamp3Y: h(1.8, -1.8),
+            cartY: h(8.2, -3.2),
+            signY: h(-1.6, 3.8),
+            fence1Y: h(7.4, -1.2),
+            fence2Y: h(9.4, -2.5),
+            mush1Y: h(4.5, 3.2),
+            mush2Y: h(-4.8, -1.5),
+            mush3Y: h(3.6, -5.8),
+            fl1Y: h(4.8, 4.1),
+            fl2Y: h(7.5, 0.9),
+            fl3Y: h(-2.8, 5.2),
+            fl4Y: h(0.9, -8.5),
+        };
+    }, [worldSeed]);
 
     useEffect(() => {
+        const h = (x: number, z: number) => getGardenTerrainHeight(x, z);
         collisionManager.setStaticColliders([
-            // Giant Sakura Tree
-            { id: 'hero_sakura_trunk', x: 6.2, y: sakuraY, z: 2.2, radius: 1.55, height: 8.5, blocksCamera: true },
-            // Stone Archway Pillars
-            { id: 'arch_pillar_left', x: -6.8 - 1.75 * Math.cos(0.34), y: archY, z: -3.5 + 1.75 * Math.sin(0.34), radius: 0.85, height: 5.5, blocksCamera: true },
-            { id: 'arch_pillar_right', x: -6.8 + 1.75 * Math.cos(0.34), y: archY, z: -3.5 - 1.75 * Math.sin(0.34), radius: 0.85, height: 5.5, blocksCamera: true },
-            // Cozy Storybook Cottage
-            { id: 'cottage_col', x: 11.5, y: cottageY, z: -6.5, radius: 2.45, height: 4.0, blocksCamera: true },
-            // Red Torii Gate Pillars
-            { id: 'torii_left', x: -0.6 - 1.45, y: toriiY, z: -10.2, radius: 0.42, height: 3.8, blocksCamera: true },
-            { id: 'torii_right', x: -0.6 + 1.45, y: toriiY, z: -10.2, radius: 0.42, height: 3.8, blocksCamera: true },
-            // Explorer Campsite Tent & Campfire
-            { id: 'camp_tent', x: 7.65, y: campY, z: -13.9, radius: 1.35, height: 2.2, blocksCamera: false },
-            { id: 'camp_fire', x: 5.85, y: campY, z: -12.35, radius: 0.65, height: 1.0, blocksCamera: false },
-            // Memory Pedestal Colliders
+            // Giant Sakura Tree (KeepSakeHugeTree.glb)
+            { id: 'hero_sakura_trunk', x: 6.2, y: coords.sakuraY, z: 2.2, radius: 1.55, height: 8.5, blocksCamera: true },
+            // Giant Evergreen Tree (KeepSakeHugeTreeGreen.glb)
+            { id: 'hero_evergreen_trunk', x: -11.5, y: coords.evergreenY, z: 4.8, radius: 1.5, height: 8.5, blocksCamera: true },
+            // Stone Archway Pillars (KeepSakeRockEntrance.glb)
+            { id: 'arch_pillar_left', x: -6.8 - 1.75 * Math.cos(0.34), y: coords.archY, z: -3.5 + 1.75 * Math.sin(0.34), radius: 0.85, height: 5.5, blocksCamera: true },
+            { id: 'arch_pillar_right', x: -6.8 + 1.75 * Math.cos(0.34), y: coords.archY, z: -3.5 - 1.75 * Math.sin(0.34), radius: 0.85, height: 5.5, blocksCamera: true },
+            // Cozy Storybook Cottage (KeepSakeRockHouse-compressed.glb)
+            { id: 'cottage_col', x: 11.5, y: coords.cottageY, z: -6.5, radius: 2.45, height: 4.0, blocksCamera: true },
+            // Red Torii Gate Pillars (KeepSakeEntranceJapanese.glb)
+            { id: 'torii_left', x: -0.6 - 1.45, y: coords.toriiY, z: -10.2, radius: 0.42, height: 3.8, blocksCamera: true },
+            { id: 'torii_right', x: -0.6 + 1.45, y: coords.toriiY, z: -10.2, radius: 0.42, height: 3.8, blocksCamera: true },
+            // Explorer Campsite Tent & Campfire (KeepSakeTent.glb)
+            { id: 'camp_tent', x: 7.65, y: coords.campY, z: -13.9, radius: 1.35, height: 2.2, blocksCamera: false },
+            { id: 'camp_fire', x: 5.85, y: coords.campY, z: -12.35, radius: 0.65, height: 1.0, blocksCamera: false },
+            // Core Sanctuary Memory Pedestals
             { id: 'ped_1', x: 1.65, y: h(1.65, 5.8), z: 5.8, radius: 0.9, height: 2.0, blocksCamera: false },
             { id: 'ped_2', x: 2.85, y: h(2.85, 3.6), z: 3.6, radius: 1.65, height: 3.2, blocksCamera: false },
             { id: 'ped_3', x: -3.6, y: h(-3.6, 2.2), z: 2.2, radius: 1.15, height: 2.8, blocksCamera: false },
             { id: 'ped_4', x: 2.1, y: h(2.1, -4.8), z: -4.8, radius: 1.15, height: 2.8, blocksCamera: false },
             { id: 'ped_5', x: -2.6, y: h(-2.6, -6.8), z: -6.8, radius: 1.65, height: 3.2, blocksCamera: false },
         ]);
-    }, [archY, sakuraY, cottageY, toriiY, campY]);
+    }, [coords, worldSeed]);
 
     return (
         <group>
             <ChunkedTerrain />
 
-            {/* Hero Sanctuary Landmarks */}
-            <StoneArchwayRuin position={[-6.8, archY - 0.1, -3.5]} rotationY={0.34} scale={1.08} />
-            <GiantSakuraTree position={[6.2, sakuraY - 0.15, 2.2]} />
+            {/* Hero Sanctuary Landmarks (Using Project GLB Assets) */}
+            <StoneArchwayGLB position={[-6.8, coords.archY, -3.5]} rotationY={0.34} scale={1.08} />
+            <MonumentalBlossomTreeGLB position={[6.2, coords.sakuraY, 2.2]} rotationY={0.25} scale={1.05} />
+            <MonumentalEvergreenTreeGLB position={[-11.5, coords.evergreenY, 4.8]} rotationY={-0.6} scale={0.98} />
 
-            {/* Structures & Landmarks from Assets.jpeg */}
-            <CozyStorybookCottage position={[11.5, cottageY - 0.08, -6.5]} rotationY={-0.65} />
-            <RedToriiGate position={[-0.6, toriiY - 0.05, -10.2]} rotationY={0.08} />
-            <StandingStonePillar position={[-9.5, h(-9.5, -1.2) - 0.05, -1.2]} rotationY={0.4} />
-            <StandingStonePillar position={[-8.2, h(-8.2, -6.5) - 0.05, -6.5]} rotationY={-0.25} scale={0.88} />
+            {/* Structures & Landmarks */}
+            <CozyStorybookCottage position={[11.5, coords.cottageY, -6.5]} rotationY={-0.65} />
+            <RedToriiGate position={[-0.6, coords.toriiY, -10.2]} rotationY={0.08} />
+            <StandingStonePillar position={[-9.5, coords.pillar1Y, -1.2]} rotationY={0.4} />
+            <StandingStonePillar position={[-8.2, coords.pillar2Y, -6.5]} rotationY={-0.25} scale={0.88} />
 
-            {/* Water & Bridges from Assets.jpeg */}
-            <StylizedReflectionPond position={[-5.8, pondY + 0.02, -14.2]} scale={1.15} />
-            <WoodenArchedBridge position={[-5.8, pondY + 0.05, -14.2]} rotationY={0.42} />
-            <WoodenStraightBridge position={[4.2, h(4.2, -9.2) + 0.04, -9.2]} rotationY={-0.3} />
+            {/* Water & Bridges */}
+            <StylizedReflectionPond position={[-5.8, coords.pondY + 0.02, -14.2]} scale={1.15} />
+            <WoodenArchedBridge position={[-5.8, coords.pondY + 0.05, -14.2]} rotationY={0.42} />
+            <WoodenStraightBridge position={[4.2, coords.bridge2Y + 0.04, -9.2]} rotationY={-0.3} />
 
-            {/* Interactables & Memory Elements from Assets.jpeg */}
-            <WoodenMemoryNoticeboard position={[-2.4, h(-2.4, 6.2) - 0.04, 6.2]} rotationY={0.45} />
-            <EngravedMemoryMonument position={[-5.6, h(-5.6, 4.6) - 0.04, 4.6]} rotationY={0.62} />
-            <StandingMemoryBanner position={[1.1, h(1.1, -9.6) - 0.04, -9.6]} rotationY={-0.2} />
-            <StandingMemoryBanner position={[-2.3, h(-2.3, -9.6) - 0.04, -9.6]} rotationY={0.2} />
-            <WoodenLanternPost position={[1.8, h(1.8, 7.6) - 0.04, 7.6]} rotationY={-2.4} />
-            <WoodenLanternPost position={[-1.9, h(-1.9, 0.2) - 0.04, 0.2]} rotationY={0.5} />
-            <WoodenLanternPost position={[1.8, h(1.8, -1.8) - 0.04, -1.8]} rotationY={-2.6} />
+            {/* Interactables & Memory Elements */}
+            <WoodenMemoryNoticeboard position={[-2.4, coords.noticeY, 6.2]} rotationY={0.45} />
+            <EngravedMemoryMonument position={[-5.6, coords.monumentY, 4.6]} rotationY={0.62} />
+            <StandingMemoryBanner position={[1.1, coords.banner1Y, -9.6]} rotationY={-0.2} />
+            <StandingMemoryBanner position={[-2.3, coords.banner2Y, -9.6]} rotationY={0.2} />
+            <WoodenLanternPost position={[1.8, coords.lamp1Y, 7.6]} rotationY={-2.4} />
+            <WoodenLanternPost position={[-1.9, coords.lamp2Y, 0.2]} rotationY={0.5} />
+            <WoodenLanternPost position={[1.8, coords.lamp3Y, -1.8]} rotationY={-2.6} />
 
-            {/* Utility & World Props from Assets.jpeg */}
-            <ExplorerCampsite position={[6.8, campY - 0.04, -13.5]} rotationY={-0.45} />
-            <WoodenCargoCart position={[8.2, h(8.2, -3.2) - 0.04, -3.2]} rotationY={-0.8} />
-            <WoodenSignpost position={[-1.6, h(-1.6, 3.8) - 0.04, 3.8]} rotationY={0.35} />
-            <WoodenFenceSection position={[7.4, h(7.4, -1.2) - 0.04, -1.2]} rotationY={-0.55} />
-            <WoodenFenceSection position={[9.4, h(9.4, -2.5) - 0.04, -2.5]} rotationY={-0.55} />
+            {/* Both GLB Flower Variants around the Sanctuary */}
+            <MemoryFlowerGLB position={[4.8, coords.fl1Y, 4.1]} rotationY={0.4} scale={1.1} variant={1} />
+            <MemoryFlowerGLB position={[7.5, coords.fl2Y, 0.9]} rotationY={1.2} scale={1.0} variant={2} />
+            <MemoryFlowerGLB position={[-2.8, coords.fl3Y, 5.2]} rotationY={-0.7} scale={1.05} variant={1} />
+            <MemoryFlowerGLB position={[0.9, coords.fl4Y, -8.5]} rotationY={2.1} scale={1.15} variant={2} />
+
+            {/* Utility & World Props */}
+            <ExplorerCampsite position={[6.8, coords.campY, -13.5]} rotationY={-0.45} />
+            <WoodenCargoCart position={[8.2, coords.cartY, -3.2]} rotationY={-0.8} />
+            <WoodenSignpost position={[-1.6, coords.signY, 3.8]} rotationY={0.35} />
+            <WoodenFenceSection position={[7.4, coords.fence1Y, -1.2]} rotationY={-0.55} />
+            <WoodenFenceSection position={[9.4, coords.fence2Y, -2.5]} rotationY={-0.55} />
 
             {/* Ambient Details: Spotted Mushrooms & Glowing Butterflies */}
-            <SpottedMushroomCluster position={[4.5, h(4.5, 3.2), 3.2]} scale={1.15} />
-            <SpottedMushroomCluster position={[-4.8, h(-4.8, -1.5), -1.5]} scale={1.0} />
-            <SpottedMushroomCluster position={[3.6, h(3.6, -5.8), -5.8]} scale={1.2} />
+            <SpottedMushroomCluster position={[4.5, coords.mush1Y, 3.2]} scale={1.15} />
+            <SpottedMushroomCluster position={[-4.8, coords.mush2Y, -1.5]} scale={1.0} />
+            <SpottedMushroomCluster position={[3.6, coords.mush3Y, -5.8]} scale={1.2} />
             <GlowingButterflies center={[0, 1.5, 2]} count={10} />
-            <GlowingButterflies center={[-5.8, pondY + 1.2, -14.2]} count={6} />
+            <GlowingButterflies center={[-5.8, coords.pondY + 1.2, -14.2]} count={6} />
 
             <HorizonVista />
             <WorldSpaceBlossomPetals />
