@@ -6,10 +6,33 @@ import { playerTelemetry, useGameStore } from '../../store/useGameStore';
 import { getGardenTerrainHeight } from '../../scenes/Environment/lowPolyUtils';
 import { collisionManager } from '../../systems/Collision/collisionSystem';
 
-const MIN_PITCH = -0.22;
-const MAX_PITCH = 1.05;
-const MIN_DISTANCE = 1.35;
-const MAX_DISTANCE = 10.5;
+const MIN_PITCH = -0.16;
+const MAX_PITCH = 0.95;
+const MIN_DISTANCE = 1.45;
+const MAX_DISTANCE = 8.8;
+
+/**
+ * Framing calibration:
+ * - PIVOT_HEIGHT (1.15m): Centers orbit around the character's upper torso.
+ * - LOOK_AT_HEIGHT_OFFSET (+0.14m above pivot = 1.29m): Places the character's
+ *   full body slightly below the vertical center of the viewport (feet ~22% from
+ *   bottom, head ~58% height) while keeping the horizon and landmarks ahead clear,
+ *   and keeping the character horizontally centered regardless of movement direction.
+ */
+const PIVOT_HEIGHT = 1.15;
+const LOOK_AT_HEIGHT_OFFSET = 0.14;
+
+// Pre-allocated scratch vectors for zero per-frame GC pressure
+const _desiredPivot = new THREE.Vector3();
+const _offsetDir = new THREE.Vector3();
+const _idealCamPos = new THREE.Vector3();
+const _rightWhisker = new THREE.Vector3();
+const _upWhisker = new THREE.Vector3(0, 0.25, 0);
+const _probeOrigin = new THREE.Vector3();
+const _probeTarget = new THREE.Vector3();
+const _testPos = new THREE.Vector3();
+const _finalCamPos = new THREE.Vector3();
+const _desiredLook = new THREE.Vector3();
 
 export const ThirdPersonCamera: React.FC = () => {
     const { gl } = useThree();
@@ -18,9 +41,10 @@ export const ThirdPersonCamera: React.FC = () => {
     const setInputMode = useGameStore((state) => state.setInputMode);
     const activeModal = useGameStore((state) => state.activeModal);
 
-    const currentPivot = useRef(new THREE.Vector3(0, 1.56, 7.5));
-    const currentLookAt = useRef(new THREE.Vector3(0, 1.56, 3.0));
+    const currentPivot = useRef(new THREE.Vector3(0, 1.15, 7.5));
+    const currentLookAt = useRef(new THREE.Vector3(0, 1.29, 7.5));
     const currentDistance = useRef(playerTelemetry.cameraDistance);
+    const isInitializedRef = useRef(false);
 
     // Synchronize Pointer Lock and Canvas Event Listeners
     useEffect(() => {
@@ -46,17 +70,20 @@ export const ThirdPersonCamera: React.FC = () => {
             }
         };
 
-        // When entering exploring phase in Camera Mode, automatically request lock
-        if (phase === 'exploring' && inputMode === 'camera' && activeModal === 'none') {
+        if (
+            phase === 'exploring' &&
+            inputMode === 'camera' &&
+            activeModal === 'none'
+        ) {
             requestLock();
         } else {
             releaseLock();
         }
 
-        // Left clicking the 3D canvas while in cursor mode immediately returns to camera mode
         const onCanvasClick = (e: MouseEvent) => {
             const state = useGameStore.getState();
-            if (state.phase !== 'exploring' || state.activeModal !== 'none') return;
+            if (state.phase !== 'exploring' || state.activeModal !== 'none')
+                return;
 
             if (state.inputMode === 'cursor') {
                 e.preventDefault();
@@ -67,15 +94,17 @@ export const ThirdPersonCamera: React.FC = () => {
             }
         };
 
-        // Toggle between Camera Mode & Cursor Mode using Alt or Escape
         const onKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return;
             const state = useGameStore.getState();
             if (state.phase !== 'exploring') return;
 
-            if (e.key === 'Alt' || e.code === 'AltLeft' || e.code === 'AltRight') {
+            if (
+                e.key === 'Alt' ||
+                e.code === 'AltLeft' ||
+                e.code === 'AltRight'
+            ) {
                 e.preventDefault();
-                // Toggle input mode cleanly
                 state.toggleInputMode();
             } else if (e.key === 'Escape' && state.inputMode === 'camera') {
                 e.preventDefault();
@@ -86,13 +115,15 @@ export const ThirdPersonCamera: React.FC = () => {
         const onPointerLockChange = () => {
             const locked = document.pointerLockElement === dom;
             const state = useGameStore.getState();
-            // If the browser exited pointer lock via Escape, ensure state switches to cursor mode
-            if (!locked && state.inputMode === 'camera' && state.activeModal === 'none') {
+            if (
+                !locked &&
+                state.inputMode === 'camera' &&
+                state.activeModal === 'none'
+            ) {
                 state.setInputMode('cursor');
             }
         };
 
-        // Camera Rotation: Strictly active in MODE A (Camera Mode), frozen in MODE B (Cursor Mode)
         const onMouseMove = (e: MouseEvent) => {
             const state = useGameStore.getState();
             if (
@@ -100,14 +131,13 @@ export const ThirdPersonCamera: React.FC = () => {
                 state.inputMode !== 'camera' ||
                 state.activeModal !== 'none'
             ) {
-                return; // Zero camera movement while in cursor mode
+                return;
             }
 
-            const sensitivity = 0.0028;
+            const sensitivity = 0.0026;
             const dx = e.movementX;
             const dy = e.movementY;
 
-            // Filter extreme browser pointer attach spikes
             if (Math.abs(dx) > 300 || Math.abs(dy) > 300) return;
 
             playerTelemetry.cameraYaw -= dx * sensitivity;
@@ -120,10 +150,11 @@ export const ThirdPersonCamera: React.FC = () => {
 
         const onWheel = (e: WheelEvent) => {
             const state = useGameStore.getState();
-            if (state.phase !== 'exploring' || state.inputMode !== 'camera') return;
+            if (state.phase !== 'exploring' || state.inputMode !== 'camera')
+                return;
             playerTelemetry.cameraDistance = THREE.MathUtils.clamp(
-                playerTelemetry.cameraDistance + e.deltaY * 0.004,
-                2.6,
+                playerTelemetry.cameraDistance + e.deltaY * 0.0035,
+                2.4,
                 MAX_DISTANCE
             );
         };
@@ -137,7 +168,10 @@ export const ThirdPersonCamera: React.FC = () => {
         return () => {
             dom.removeEventListener('click', onCanvasClick);
             window.removeEventListener('keydown', onKeyDown);
-            document.removeEventListener('pointerlockchange', onPointerLockChange);
+            document.removeEventListener(
+                'pointerlockchange',
+                onPointerLockChange
+            );
             window.removeEventListener('mousemove', onMouseMove);
             dom.removeEventListener('wheel', onWheel);
         };
@@ -148,52 +182,86 @@ export const ThirdPersonCamera: React.FC = () => {
         const delta = Math.min(rawDelta, 0.05);
 
         const [px, py, pz] = playerTelemetry.position;
+        _desiredPivot.set(px, py + PIVOT_HEIGHT, pz);
 
-        // Follow character pivot smoothly
-        const desiredPivot = new THREE.Vector3(px, py + 1.56, pz);
-        currentPivot.current.lerp(desiredPivot, Math.min(1, delta * 13));
+        if (!isInitializedRef.current) {
+            currentPivot.current.copy(_desiredPivot);
+            currentLookAt.current.set(
+                px,
+                py + PIVOT_HEIGHT + LOOK_AT_HEIGHT_OFFSET,
+                pz
+            );
+            isInitializedRef.current = true;
+        }
+
+        // Exponential damping keeps horizontal framing tight while smoothing vertical jump arcs
+        const horizDamp = 1.0 - Math.exp(-18.0 * delta);
+        const vertLambda = playerTelemetry.isGrounded ? 15.0 : 8.5;
+        const vertDamp = 1.0 - Math.exp(-vertLambda * delta);
+
+        currentPivot.current.x = THREE.MathUtils.lerp(
+            currentPivot.current.x,
+            _desiredPivot.x,
+            horizDamp
+        );
+        currentPivot.current.z = THREE.MathUtils.lerp(
+            currentPivot.current.z,
+            _desiredPivot.z,
+            horizDamp
+        );
+        currentPivot.current.y = THREE.MathUtils.lerp(
+            currentPivot.current.y,
+            _desiredPivot.y,
+            vertDamp
+        );
 
         const yaw = playerTelemetry.cameraYaw;
         const pitch = playerTelemetry.cameraPitch;
         const desiredDist = playerTelemetry.cameraDistance;
 
-        const offsetDir = new THREE.Vector3(
-            Math.sin(yaw) * Math.cos(pitch),
-            Math.sin(pitch),
-            Math.cos(yaw) * Math.cos(pitch)
-        ).normalize();
+        _offsetDir
+            .set(
+                Math.sin(yaw) * Math.cos(pitch),
+                Math.sin(pitch),
+                Math.cos(yaw) * Math.cos(pitch)
+            )
+            .normalize();
 
-        const idealCamPos = currentPivot.current
-            .clone()
-            .addScaledVector(offsetDir, desiredDist);
+        _idealCamPos
+            .copy(currentPivot.current)
+            .addScaledVector(_offsetDir, desiredDist);
 
-        // Multi-Probe Collision handling (whiskers against obstacles)
-        const rightWhisker = new THREE.Vector3(
-            Math.cos(yaw),
-            0,
-            -Math.sin(yaw)
-        ).multiplyScalar(0.28);
-        const upWhisker = new THREE.Vector3(0, 0.25, 0);
+        // Multi-Probe Collision handling (whiskers against trees, pillars, and walls)
+        _rightWhisker.set(Math.cos(yaw), 0, -Math.sin(yaw)).multiplyScalar(0.26);
 
         const fCenter = collisionManager.computeSafeCameraFraction(
             currentPivot.current,
-            idealCamPos,
-            0.42
+            _idealCamPos,
+            0.4
         );
+
+        _probeOrigin.copy(currentPivot.current).sub(_rightWhisker);
+        _probeTarget.copy(_idealCamPos).sub(_rightWhisker);
         const fLeft = collisionManager.computeSafeCameraFraction(
-            currentPivot.current.clone().sub(rightWhisker),
-            idealCamPos.clone().sub(rightWhisker),
-            0.32
+            _probeOrigin,
+            _probeTarget,
+            0.3
         );
+
+        _probeOrigin.copy(currentPivot.current).add(_rightWhisker);
+        _probeTarget.copy(_idealCamPos).add(_rightWhisker);
         const fRight = collisionManager.computeSafeCameraFraction(
-            currentPivot.current.clone().add(rightWhisker),
-            idealCamPos.clone().add(rightWhisker),
-            0.32
+            _probeOrigin,
+            _probeTarget,
+            0.3
         );
+
+        _probeOrigin.copy(currentPivot.current).add(_upWhisker);
+        _probeTarget.copy(_idealCamPos).add(_upWhisker);
         const fUp = collisionManager.computeSafeCameraFraction(
-            currentPivot.current.clone().add(upWhisker),
-            idealCamPos.clone().add(upWhisker),
-            0.32
+            _probeOrigin,
+            _probeTarget,
+            0.3
         );
 
         const safeFraction = Math.min(
@@ -202,52 +270,61 @@ export const ThirdPersonCamera: React.FC = () => {
         );
         let targetSafeDist = Math.max(MIN_DISTANCE, desiredDist * safeFraction);
 
-        // Prevent ground clipping
-        for (const sampleT of [0.35, 0.68, 1.0]) {
-            const testPos = currentPivot.current
-                .clone()
-                .addScaledVector(offsetDir, targetSafeDist * sampleT);
-            const groundH = getGardenTerrainHeight(testPos.x, testPos.z) + 0.52;
-            if (testPos.y < groundH && sampleT === 1.0) {
+        // Prevent terrain clipping along the camera ray
+        for (const sampleT of [0.4, 0.72, 1.0]) {
+            _testPos
+                .copy(currentPivot.current)
+                .addScaledVector(_offsetDir, targetSafeDist * sampleT);
+            const groundH = getGardenTerrainHeight(_testPos.x, _testPos.z) + 0.45;
+            if (_testPos.y < groundH && sampleT === 1.0) {
                 const dyNeeded = groundH - currentPivot.current.y;
-                if (offsetDir.y < 0.05) {
-                    targetSafeDist = Math.max(MIN_DISTANCE, targetSafeDist * 0.78);
+                if (_offsetDir.y < 0.05) {
+                    targetSafeDist = Math.max(
+                        MIN_DISTANCE,
+                        targetSafeDist * 0.8
+                    );
                 } else {
                     targetSafeDist = Math.max(
                         MIN_DISTANCE,
-                        Math.min(targetSafeDist, dyNeeded / Math.max(0.1, offsetDir.y))
+                        Math.min(
+                            targetSafeDist,
+                            dyNeeded / Math.max(0.1, _offsetDir.y)
+                        )
                     );
                 }
             }
         }
 
-        const distLerpSpeed =
-            targetSafeDist < currentDistance.current ? 18.5 : 4.8;
+        const distLambda =
+            targetSafeDist < currentDistance.current ? 20.0 : 6.5;
         currentDistance.current = THREE.MathUtils.lerp(
             currentDistance.current,
             targetSafeDist,
-            Math.min(1, delta * distLerpSpeed)
+            1.0 - Math.exp(-distLambda * delta)
         );
 
-        const finalCamPos = currentPivot.current
-            .clone()
-            .addScaledVector(offsetDir, currentDistance.current);
+        _finalCamPos
+            .copy(currentPivot.current)
+            .addScaledVector(_offsetDir, currentDistance.current);
 
         const camGroundFloor =
-            getGardenTerrainHeight(finalCamPos.x, finalCamPos.z) + 0.46;
-        if (finalCamPos.y < camGroundFloor) {
-            finalCamPos.y = camGroundFloor;
+            getGardenTerrainHeight(_finalCamPos.x, _finalCamPos.z) + 0.42;
+        if (_finalCamPos.y < camGroundFloor) {
+            _finalCamPos.y = camGroundFloor;
         }
 
-        state.camera.position.copy(finalCamPos);
+        state.camera.position.copy(_finalCamPos);
 
-        const forwardAim = new THREE.Vector3(
-            -Math.sin(yaw) * 1.45,
-            0.22,
-            -Math.cos(yaw) * 1.45
+        // Keep lookAt locked horizontally on the character pivot with a slight forward lead
+        // so the character remains horizontally centered and slightly below vertical center.
+        _desiredLook.set(
+            currentPivot.current.x - Math.sin(yaw) * 0.35,
+            currentPivot.current.y + LOOK_AT_HEIGHT_OFFSET,
+            currentPivot.current.z - Math.cos(yaw) * 0.35
         );
-        const desiredLook = currentPivot.current.clone().add(forwardAim);
-        currentLookAt.current.lerp(desiredLook, Math.min(1, delta * 15));
+
+        const lookDamp = 1.0 - Math.exp(-22.0 * delta);
+        currentLookAt.current.lerp(_desiredLook, lookDamp);
         state.camera.lookAt(currentLookAt.current);
     });
 

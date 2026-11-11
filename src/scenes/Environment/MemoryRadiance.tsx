@@ -5,6 +5,8 @@ import * as THREE from 'three';
 import { playerTelemetry, useGameStore } from '../../store/useGameStore';
 import { THEME } from '../../styles/theme';
 
+const SHARED_MOTE_GEOMETRY = new THREE.OctahedronGeometry(1, 0);
+
 export const MemoryRadiance: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
     const persistentMemories = useGameStore((state) => state.persistentMemories);
@@ -25,8 +27,9 @@ export const MemoryRadiance: React.FC = () => {
         []
     );
 
-    useFrame(({ clock }, delta) => {
+    useFrame(({ clock }, rawDelta) => {
         if (phase !== 'exploring') return;
+        const delta = Math.min(rawDelta, 0.05);
         const t = clock.getElapsedTime();
         const [px, , pz] = playerTelemetry.position;
 
@@ -34,20 +37,23 @@ export const MemoryRadiance: React.FC = () => {
         let minDist = 999;
         let nearestPos: [number, number, number] = [0, 0, 0];
 
-        persistentMemories.forEach((mem) => {
+        for (let i = 0; i < persistentMemories.length; i++) {
+            const mem = persistentMemories[i];
             const d = Math.hypot(px - mem.position[0], pz - mem.position[2]);
             if (d < minDist) {
                 minDist = d;
                 nearestPos = [mem.position[0], mem.position[1], mem.position[2]];
             }
-        });
+        }
 
         playerTelemetry.nearestMemoryDistance = minDist;
         playerTelemetry.nearestMemoryPosition = nearestPos;
 
         // Smooth radiance falloff (0 outside 8m, ramp to 1 at <2.5m)
         const targetRadiance =
-            minDist < 8.0 ? Math.pow(THREE.MathUtils.clamp(1.0 - minDist / 8.0, 0, 1), 1.25) : 0;
+            minDist < 8.0
+                ? Math.pow(THREE.MathUtils.clamp(1.0 - minDist / 8.0, 0, 1), 1.25)
+                : 0;
 
         playerTelemetry.nearestMemoryRadiance = THREE.MathUtils.lerp(
             playerTelemetry.nearestMemoryRadiance,
@@ -58,21 +64,31 @@ export const MemoryRadiance: React.FC = () => {
         const rad = playerTelemetry.nearestMemoryRadiance;
 
         // 2. Animate Golden Motes rising in the illuminated memory zone
-        if (motesMeshRef.current && rad > 0.05) {
-            motes.forEach((m, idx) => {
-                const angle = m.offsetAngle + t * 0.15 * m.speed;
-                const r = m.dist * (0.8 + Math.sin(t * 1.5 + idx) * 0.2);
-                const wx = nearestPos[0] + Math.cos(angle) * r;
-                const wz = nearestPos[2] + Math.sin(angle) * r;
-                const wy = nearestPos[1] + ((m.baseY + t * 0.45 * m.speed) % 3.6);
+        if (motesMeshRef.current) {
+            const isVisible = rad > 0.04;
+            motesMeshRef.current.visible = isVisible;
 
-                dummy.position.set(wx, wy, wz);
-                const s = m.scale * (0.4 + rad * 0.6) * (1.0 - wy / 4.0);
-                dummy.scale.set(s, s, s);
-                dummy.updateMatrix();
-                motesMeshRef.current!.setMatrixAt(idx, dummy.matrix);
-            });
-            motesMeshRef.current.instanceMatrix.needsUpdate = true;
+            if (isVisible) {
+                for (let idx = 0; idx < motes.length; idx++) {
+                    const m = motes[idx];
+                    const angle = m.offsetAngle + t * 0.15 * m.speed;
+                    const r = m.dist * (0.8 + Math.sin(t * 1.5 + idx) * 0.2);
+                    const wx = nearestPos[0] + Math.cos(angle) * r;
+                    const wz = nearestPos[2] + Math.sin(angle) * r;
+                    const wy =
+                        nearestPos[1] + ((m.baseY + t * 0.45 * m.speed) % 3.6);
+
+                    dummy.position.set(wx, wy, wz);
+                    const s =
+                        m.scale *
+                        (0.4 + rad * 0.6) *
+                        Math.max(0, 1.0 - (wy - nearestPos[1]) / 4.0);
+                    dummy.scale.set(s, s, s);
+                    dummy.updateMatrix();
+                    motesMeshRef.current.setMatrixAt(idx, dummy.matrix);
+                }
+                motesMeshRef.current.instanceMatrix.needsUpdate = true;
+            }
         }
     });
 
@@ -101,7 +117,7 @@ export const MemoryRadiance: React.FC = () => {
             {/* Radiant Floating Motes */}
             <instancedMesh
                 ref={motesMeshRef}
-                args={[new THREE.OctahedronGeometry(1, 0), undefined, motes.length]}
+                args={[SHARED_MOTE_GEOMETRY, undefined, motes.length]}
                 frustumCulled={false}
             >
                 <meshBasicMaterial
