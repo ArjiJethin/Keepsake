@@ -23,5 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-#Souce Code Doc
+# Source Code Doc
+KEEPSAKE_SOURCE_CODE.txt
 .KEEPSAKE_SOURCE_CODE.txt

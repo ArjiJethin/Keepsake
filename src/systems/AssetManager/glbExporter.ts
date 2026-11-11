@@ -27,10 +27,10 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         id: 'memory-wanderer',
         name: 'The Memory Wanderer (Protagonist)',
         category: 'characters',
-        filename: 'assets/characters/memory-wanderer.glb',
-        dimensions: '0.85m × 1.75m × 0.72m',
+        filename: 'public/KeepSakeFemale-v2-animated.glb',
+        dimensions: '0.88m × 1.74m × 0.72m',
         worldCoords: [0, 7.5],
-        intendedUse: 'Main single-player explorer with articulated rig, poncho, scarf, goggles & lantern.',
+        intendedUse: 'Main single-player rigged explorer (KeepSakeFemale-v2-animated.glb) with Walk_2, Sprint, and Jump_2_RM animations.',
     },
     {
         id: 'grand-memory-portal',

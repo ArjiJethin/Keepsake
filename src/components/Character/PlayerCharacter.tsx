@@ -1,5 +1,5 @@
 // src/components/Character/PlayerCharacter.tsx
-import React, { useEffect, useRef } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { playerTelemetry, useGameStore } from '../../store/useGameStore';
@@ -9,6 +9,10 @@ import {
 } from '../../scenes/Environment/lowPolyUtils';
 import { collisionManager } from '../../systems/Collision/collisionSystem';
 import { ExplorerModelMesh, type ExplorerRigRefs } from './ExplorerModelMesh';
+import {
+    FemaleWandererGLB,
+    type WandererAnimState,
+} from './FemaleWandererGLB';
 
 const GRAVITY = -22.0;
 const JUMP_VELOCITY = 7.8;
@@ -17,6 +21,38 @@ const RUN_SPEED = 8.2;
 const ACCELERATION = 11.5;
 const DECELERATION = 14.0;
 
+/**
+ * Error boundary so that if the user has not yet copied KeepSakeFemale-v2-animated.glb
+ * into public/, the character gracefully falls back without crashing the 3D scene.
+ */
+class CharacterGLBErrorBoundary extends React.Component<
+    { fallback: React.ReactNode; children: React.ReactNode },
+    { hasError: boolean }
+> {
+    constructor(props: { fallback: React.ReactNode; children: React.ReactNode }) {
+        super(props);
+        this.state = { hasError: false };
+    }
+
+    static getDerivedStateFromError(): { hasError: boolean } {
+        return { hasError: true };
+    }
+
+    componentDidCatch(error: unknown) {
+        console.error(
+            '[Keepsake] Failed to load /KeepSakeFemale-v2-animated.glb. Ensure the file is placed in public/KeepSakeFemale-v2-animated.glb.',
+            error
+        );
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return this.props.fallback;
+        }
+        return this.props.children;
+    }
+}
+
 export const PlayerCharacter: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
     const activeModal = useGameStore((state) => state.activeModal);
@@ -24,7 +60,16 @@ export const PlayerCharacter: React.FC = () => {
 
     const rootRef = useRef<THREE.Group>(null);
 
-    // Articulated Rig References for ExplorerModelMesh
+    // Reactive animation state & telemetry for FemaleWandererGLB
+    const [animMoveState, setAnimMoveState] =
+        useState<WandererAnimState>('idle');
+    const [currentHorizSpeed, setCurrentHorizSpeed] = useState<number>(0);
+    const [isGroundedState, setIsGroundedState] = useState<boolean>(true);
+    const lastSyncMoveStateRef = useRef<WandererAnimState>('idle');
+    const lastSyncSpeedRef = useRef<number>(0);
+    const lastSyncGroundedRef = useRef<boolean>(true);
+
+    // Articulated Rig References for Male / Fallback ExplorerModelMesh
     const bodyGroup = useRef<THREE.Group>(null);
     const headGroup = useRef<THREE.Group>(null);
     const ponchoGroup = useRef<THREE.Group>(null);
@@ -75,6 +120,15 @@ export const PlayerCharacter: React.FC = () => {
             ) {
                 velocity.current.y = JUMP_VELOCITY;
                 playerTelemetry.isGrounded = false;
+                playerTelemetry.moveState = 'jump';
+                if (lastSyncMoveStateRef.current !== 'jump') {
+                    lastSyncMoveStateRef.current = 'jump';
+                    setAnimMoveState('jump');
+                }
+                if (lastSyncGroundedRef.current !== false) {
+                    lastSyncGroundedRef.current = false;
+                    setIsGroundedState(false);
+                }
             }
         };
 
@@ -114,7 +168,8 @@ export const PlayerCharacter: React.FC = () => {
 
         const inputLen = Math.hypot(inputForward, inputRight);
         const isSprinting =
-            keys.current['ShiftLeft'] || keys.current['ShiftRight'];
+            Boolean(keys.current['ShiftLeft'] || keys.current['ShiftRight']) &&
+            inputLen > 0;
         const targetSpeed =
             inputLen > 0 ? (isSprinting ? RUN_SPEED : WALK_SPEED) : 0;
 
@@ -197,7 +252,7 @@ export const PlayerCharacter: React.FC = () => {
             velocity.current.z,
         ];
 
-        // 6. Natural Shortest-Arc Turning
+        // 6. Natural Shortest-Arc Turning (Character faces direction of travel)
         const horizSpeed = Math.hypot(velocity.current.x, velocity.current.z);
         if (horizSpeed > 0.2) {
             const targetAngle = Math.atan2(velocity.current.x, velocity.current.z);
@@ -210,17 +265,34 @@ export const PlayerCharacter: React.FC = () => {
         rootRef.current.position.set(nextX, nextY, nextZ);
         rootRef.current.rotation.y = playerTelemetry.rotationY;
 
-        // 7. Articulated Rig Animation (Walk, Sprint, Jump, Scarf/Lantern Physics)
+        // 7. Determine Animation State (Walk_2, Sprint, Jump_2_RM, or Stationary)
+        let nextMoveState: WandererAnimState = 'idle';
         if (!playerTelemetry.isGrounded) {
-            playerTelemetry.moveState = 'jump';
-        } else if (horizSpeed > 5.8) {
-            playerTelemetry.moveState = 'run';
+            nextMoveState = 'jump';
+        } else if (isSprinting && horizSpeed > 5.2) {
+            nextMoveState = 'run';
         } else if (horizSpeed > 0.22) {
-            playerTelemetry.moveState = 'walk';
+            nextMoveState = 'walk';
         } else {
-            playerTelemetry.moveState = 'idle';
+            nextMoveState = 'idle';
         }
 
+        playerTelemetry.moveState = nextMoveState;
+
+        if (lastSyncMoveStateRef.current !== nextMoveState) {
+            lastSyncMoveStateRef.current = nextMoveState;
+            setAnimMoveState(nextMoveState);
+        }
+        if (Math.abs(lastSyncSpeedRef.current - horizSpeed) > 0.15) {
+            lastSyncSpeedRef.current = horizSpeed;
+            setCurrentHorizSpeed(horizSpeed);
+        }
+        if (lastSyncGroundedRef.current !== playerTelemetry.isGrounded) {
+            lastSyncGroundedRef.current = playerTelemetry.isGrounded;
+            setIsGroundedState(playerTelemetry.isGrounded);
+        }
+
+        // 8. Procedural Rig Animation for Male Archetype / Fallback Mesh
         const cycleSpeed =
             playerTelemetry.moveState === 'run'
                 ? 13.8
@@ -244,7 +316,6 @@ export const PlayerCharacter: React.FC = () => {
             headGroup.current
         ) {
             if (!playerTelemetry.isGrounded) {
-                // Expressive Jump / Airborne Pose
                 leftLegGroup.current.rotation.x = THREE.MathUtils.lerp(
                     leftLegGroup.current.rotation.x,
                     0.48,
@@ -276,7 +347,6 @@ export const PlayerCharacter: React.FC = () => {
                     delta * 8
                 );
             } else if (horizSpeed > 0.18) {
-                // Grounded Walk & Sprint Stride
                 const legSwing = Math.sin(c) * (0.58 * stride + 0.14);
                 leftLegGroup.current.rotation.x = legSwing;
                 rightLegGroup.current.rotation.x = -legSwing;
@@ -284,12 +354,10 @@ export const PlayerCharacter: React.FC = () => {
                 leftArmGroup.current.rotation.x = -legSwing * 0.62;
                 rightArmGroup.current.rotation.x = legSwing * 0.62;
 
-                // Vertical gait bounce & forward sprint lean
                 bodyGroup.current.position.y = Math.abs(Math.cos(c)) * 0.062 * stride;
                 bodyGroup.current.rotation.x = 0.06 + stride * 0.13;
                 bodyGroup.current.rotation.z = Math.sin(c) * 0.025 * stride;
 
-                // Poncho, Scarf & Lantern secondary motion
                 ponchoGroup.current.rotation.x =
                     0.05 + stride * 0.1 + Math.sin(c * 2) * 0.03;
                 scarfTailGroup.current.rotation.x =
@@ -301,7 +369,6 @@ export const PlayerCharacter: React.FC = () => {
                     0.12 * stride + Math.sin(c * 2 - 0.8) * 0.18 * stride;
                 lanternGroup.current.rotation.z = Math.cos(c) * 0.14 * stride;
             } else {
-                // Gentle Breathing & Looking Idle
                 leftLegGroup.current.rotation.x = THREE.MathUtils.lerp(
                     leftLegGroup.current.rotation.x,
                     0,
@@ -341,7 +408,7 @@ export const PlayerCharacter: React.FC = () => {
             }
         }
 
-        // 8. Signature Memory Lantern Feature: "Glows brighter near memories" (Character Model M.png)
+        // 9. Signature Memory Lantern Feature for Male / Fallback Mesh
         if (lanternLight.current) {
             const memDist = playerTelemetry.nearestMemoryDistance;
             const proximityBoost =
@@ -356,9 +423,27 @@ export const PlayerCharacter: React.FC = () => {
 
     if (phase !== 'exploring') return null;
 
+    const fallbackExplorer = (
+        <ExplorerModelMesh archetype={characterModel} rig={rigRefs} />
+    );
+
     return (
         <group ref={rootRef} position={[0, 0, 7.5]} rotation={[0, Math.PI, 0]}>
-            <ExplorerModelMesh archetype={characterModel} rig={rigRefs} />
+            {characterModel === 'female' ? (
+                <CharacterGLBErrorBoundary fallback={fallbackExplorer}>
+                    <Suspense fallback={fallbackExplorer}>
+                        <FemaleWandererGLB
+                            moveState={animMoveState}
+                            horizSpeed={currentHorizSpeed}
+                            isGrounded={isGroundedState}
+                            walkSpeedRef={WALK_SPEED}
+                            runSpeedRef={RUN_SPEED}
+                        />
+                    </Suspense>
+                </CharacterGLBErrorBoundary>
+            ) : (
+                fallbackExplorer
+            )}
         </group>
     );
 };
