@@ -11,18 +11,9 @@ const MAX_PITCH = 0.95;
 const MIN_DISTANCE = 1.45;
 const MAX_DISTANCE = 8.8;
 
-/**
- * Framing calibration:
- * - PIVOT_HEIGHT (1.15m): Centers orbit around the character's upper torso.
- * - LOOK_AT_HEIGHT_OFFSET (+0.14m above pivot = 1.29m): Places the character's
- *   full body slightly below the vertical center of the viewport (feet ~22% from
- *   bottom, head ~58% height) while keeping the horizon and landmarks ahead clear,
- *   and keeping the character horizontally centered regardless of movement direction.
- */
 const PIVOT_HEIGHT = 1.15;
 const LOOK_AT_HEIGHT_OFFSET = 0.14;
 
-// Pre-allocated scratch vectors for zero per-frame GC pressure
 const _desiredPivot = new THREE.Vector3();
 const _offsetDir = new THREE.Vector3();
 const _idealCamPos = new THREE.Vector3();
@@ -33,6 +24,15 @@ const _probeTarget = new THREE.Vector3();
 const _testPos = new THREE.Vector3();
 const _finalCamPos = new THREE.Vector3();
 const _desiredLook = new THREE.Vector3();
+
+function isTouchDevice(): boolean {
+    if (typeof window === 'undefined') return false;
+    return (
+        'ontouchstart' in window ||
+        navigator.maxTouchPoints > 0 ||
+        window.matchMedia?.('(pointer: coarse)').matches
+    );
+}
 
 export const ThirdPersonCamera: React.FC = () => {
     const { gl } = useThree();
@@ -46,11 +46,16 @@ export const ThirdPersonCamera: React.FC = () => {
     const currentDistance = useRef(playerTelemetry.cameraDistance);
     const isInitializedRef = useRef(false);
 
-    // Synchronize Pointer Lock and Canvas Event Listeners
+    // Track dedicated camera touch identifier on mobile so joystick and camera never conflict
+    const cameraTouchIdRef = useRef<number | null>(null);
+    const lastTouchPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
     useEffect(() => {
         const dom = gl.domElement;
+        const touchCapable = isTouchDevice();
 
         const requestLock = () => {
+            if (touchCapable) return;
             if (document.pointerLockElement !== dom) {
                 try {
                     dom.requestPointerLock?.();
@@ -81,6 +86,7 @@ export const ThirdPersonCamera: React.FC = () => {
         }
 
         const onCanvasClick = (e: MouseEvent) => {
+            if (touchCapable) return;
             const state = useGameStore.getState();
             if (state.phase !== 'exploring' || state.activeModal !== 'none')
                 return;
@@ -113,6 +119,7 @@ export const ThirdPersonCamera: React.FC = () => {
         };
 
         const onPointerLockChange = () => {
+            if (touchCapable) return;
             const locked = document.pointerLockElement === dom;
             const state = useGameStore.getState();
             if (
@@ -133,6 +140,7 @@ export const ThirdPersonCamera: React.FC = () => {
             ) {
                 return;
             }
+            if (document.pointerLockElement !== dom) return;
 
             const sensitivity = 0.0026;
             const dx = e.movementX;
@@ -159,11 +167,83 @@ export const ThirdPersonCamera: React.FC = () => {
             );
         };
 
+        // Mobile Touch Camera Look (independent of left-side joystick and UI buttons)
+        const isInteractiveUIElement = (target: EventTarget | null): boolean => {
+            if (!(target instanceof Element)) return false;
+            return Boolean(
+                target.closest(
+                    'button, a, input, textarea, select, [data-joystick-zone], [data-ui-interactive]'
+                )
+            );
+        };
+
+        const onTouchStart = (e: TouchEvent) => {
+            const state = useGameStore.getState();
+            if (state.phase !== 'exploring' || state.activeModal !== 'none') return;
+            if (cameraTouchIdRef.current !== null) return;
+
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (isInteractiveUIElement(t.target)) continue;
+
+                // Ignore touches starting inside the bottom-left joystick safety region
+                const inBottomLeftJoystickArea =
+                    t.clientX < 210 && t.clientY > window.innerHeight - 210;
+                if (inBottomLeftJoystickArea) continue;
+
+                cameraTouchIdRef.current = t.identifier;
+                lastTouchPosRef.current = { x: t.clientX, y: t.clientY };
+                break;
+            }
+        };
+
+        const onTouchMove = (e: TouchEvent) => {
+            if (cameraTouchIdRef.current === null) return;
+            const state = useGameStore.getState();
+            if (state.phase !== 'exploring' || state.activeModal !== 'none') {
+                cameraTouchIdRef.current = null;
+                return;
+            }
+
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === cameraTouchIdRef.current) {
+                    const dx = t.clientX - lastTouchPosRef.current.x;
+                    const dy = t.clientY - lastTouchPosRef.current.y;
+                    lastTouchPosRef.current = { x: t.clientX, y: t.clientY };
+
+                    const touchSensitivity = 0.0046;
+                    playerTelemetry.cameraYaw -= dx * touchSensitivity;
+                    playerTelemetry.cameraPitch = THREE.MathUtils.clamp(
+                        playerTelemetry.cameraPitch + dy * touchSensitivity,
+                        MIN_PITCH,
+                        MAX_PITCH
+                    );
+                    break;
+                }
+            }
+        };
+
+        const onTouchEndOrCancel = (e: TouchEvent) => {
+            if (cameraTouchIdRef.current === null) return;
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                if (e.changedTouches[i].identifier === cameraTouchIdRef.current) {
+                    cameraTouchIdRef.current = null;
+                    break;
+                }
+            }
+        };
+
         dom.addEventListener('click', onCanvasClick);
         window.addEventListener('keydown', onKeyDown);
         document.addEventListener('pointerlockchange', onPointerLockChange);
         window.addEventListener('mousemove', onMouseMove);
         dom.addEventListener('wheel', onWheel, { passive: true });
+
+        window.addEventListener('touchstart', onTouchStart, { passive: true });
+        window.addEventListener('touchmove', onTouchMove, { passive: true });
+        window.addEventListener('touchend', onTouchEndOrCancel, { passive: true });
+        window.addEventListener('touchcancel', onTouchEndOrCancel, { passive: true });
 
         return () => {
             dom.removeEventListener('click', onCanvasClick);
@@ -174,6 +254,11 @@ export const ThirdPersonCamera: React.FC = () => {
             );
             window.removeEventListener('mousemove', onMouseMove);
             dom.removeEventListener('wheel', onWheel);
+
+            window.removeEventListener('touchstart', onTouchStart);
+            window.removeEventListener('touchmove', onTouchMove);
+            window.removeEventListener('touchend', onTouchEndOrCancel);
+            window.removeEventListener('touchcancel', onTouchEndOrCancel);
         };
     }, [gl, phase, inputMode, activeModal, setInputMode]);
 
@@ -194,7 +279,6 @@ export const ThirdPersonCamera: React.FC = () => {
             isInitializedRef.current = true;
         }
 
-        // Exponential damping keeps horizontal framing tight while smoothing vertical jump arcs
         const horizDamp = 1.0 - Math.exp(-18.0 * delta);
         const vertLambda = playerTelemetry.isGrounded ? 15.0 : 8.5;
         const vertDamp = 1.0 - Math.exp(-vertLambda * delta);
@@ -231,7 +315,6 @@ export const ThirdPersonCamera: React.FC = () => {
             .copy(currentPivot.current)
             .addScaledVector(_offsetDir, desiredDist);
 
-        // Multi-Probe Collision handling (whiskers against trees, pillars, and walls)
         _rightWhisker.set(Math.cos(yaw), 0, -Math.sin(yaw)).multiplyScalar(0.26);
 
         const fCenter = collisionManager.computeSafeCameraFraction(
@@ -270,7 +353,6 @@ export const ThirdPersonCamera: React.FC = () => {
         );
         let targetSafeDist = Math.max(MIN_DISTANCE, desiredDist * safeFraction);
 
-        // Prevent terrain clipping along the camera ray
         for (const sampleT of [0.4, 0.72, 1.0]) {
             _testPos
                 .copy(currentPivot.current)
@@ -315,8 +397,6 @@ export const ThirdPersonCamera: React.FC = () => {
 
         state.camera.position.copy(_finalCamPos);
 
-        // Keep lookAt locked horizontally on the character pivot with a slight forward lead
-        // so the character remains horizontally centered and slightly below vertical center.
         _desiredLook.set(
             currentPivot.current.x - Math.sin(yaw) * 0.35,
             currentPivot.current.y + LOOK_AT_HEIGHT_OFFSET,

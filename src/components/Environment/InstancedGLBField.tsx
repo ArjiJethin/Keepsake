@@ -4,130 +4,182 @@ import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
-export interface GLBInstancedPart {
+interface ExtractedPrimitive {
     geometry: THREE.BufferGeometry;
-    material: THREE.Material;
-    matrix: THREE.Matrix4;
+    material: THREE.Material | THREE.Material[];
+    localMatrix: THREE.Matrix4;
 }
 
-const instancedPartsCache = new Map<string, GLBInstancedPart[]>();
+interface CachedInstancedTemplate {
+    primitives: ExtractedPrimitive[];
+    normalizationMatrix: THREE.Matrix4;
+}
 
-/**
- * Extracts the normalized geometry of a GLB into parts that can each be drawn
- * with one InstancedMesh instead of cloning the whole model per scattered copy.
- */
-export function useInstancedGLBParts(
+const INSTANCED_TEMPLATE_CACHE = new Map<string, CachedInstancedTemplate>();
+
+function getOrExtractInstancedTemplate(
     url: string,
-    targetHeight: number
-): GLBInstancedPart[] {
-    const gltf = useGLTF(url, true, true, (loader) => {
-        loader.setMeshoptDecoder(MeshoptDecoder);
+    rawScene: THREE.Group,
+    targetHeight: number,
+    sinkOffset: number
+): CachedInstancedTemplate {
+    const cacheKey = `${url}|${targetHeight.toFixed(2)}|${sinkOffset.toFixed(3)}`;
+    const existing = INSTANCED_TEMPLATE_CACHE.get(cacheKey);
+    if (existing) return existing;
+
+    const clone = rawScene.clone(true);
+    clone.position.set(0, 0, 0);
+    clone.rotation.set(0, 0, 0);
+    clone.scale.set(1, 1, 1);
+    clone.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+
+    const maxDim = Math.max(size.y, size.x * 0.55, size.z * 0.55, 0.001);
+    const unitScale = targetHeight / maxDim;
+    const offsetX = -center.x * unitScale;
+    const offsetY = -box.min.y * unitScale + sinkOffset;
+    const offsetZ = -center.z * unitScale;
+
+    const normMatrix = new THREE.Matrix4().compose(
+        new THREE.Vector3(offsetX, offsetY, offsetZ),
+        new THREE.Quaternion(),
+        new THREE.Vector3(unitScale, unitScale, unitScale)
+    );
+
+    const primitives: ExtractedPrimitive[] = [];
+
+    clone.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+            const mesh = child as THREE.Mesh;
+            if (!mesh.geometry) return;
+
+            if (!mesh.geometry.boundingSphere) {
+                mesh.geometry.computeBoundingSphere();
+            }
+
+            const mats = Array.isArray(mesh.material)
+                ? mesh.material
+                : [mesh.material];
+            mats.forEach((mat) => {
+                if (
+                    mat &&
+                    (mat as THREE.MeshStandardMaterial).isMeshStandardMaterial
+                ) {
+                    const std = mat as THREE.MeshStandardMaterial;
+                    std.envMapIntensity = 1.0;
+                    if (std.map) {
+                        std.map.anisotropy = 2;
+                    }
+                }
+            });
+
+            primitives.push({
+                geometry: mesh.geometry,
+                material: mesh.material,
+                localMatrix: mesh.matrixWorld.clone(),
+            });
+        }
     });
 
-    return useMemo(() => {
-        const cacheKey = `${url}_${targetHeight}`;
-        const cached = instancedPartsCache.get(cacheKey);
-        if (cached) return cached;
-
-        const root = gltf.scene;
-        root.updateMatrixWorld(true);
-
-        const box = new THREE.Box3().setFromObject(root);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-
-        const maxDim = Math.max(size.y, size.x * 0.5, size.z * 0.5, 0.001);
-        const unitScale = targetHeight / maxDim;
-
-        const normalize = new THREE.Matrix4()
-            .makeScale(unitScale, unitScale, unitScale)
-            .setPosition(0, -box.min.y * unitScale, 0);
-
-        const parts: GLBInstancedPart[] = [];
-        root.traverse((child) => {
-            const mesh = child as THREE.Mesh;
-            if (!mesh.isMesh) return;
-            parts.push({
-                geometry: mesh.geometry,
-                material: (Array.isArray(mesh.material)
-                    ? mesh.material[0]
-                    : mesh.material) as THREE.Material,
-                matrix: new THREE.Matrix4().multiplyMatrices(
-                    normalize,
-                    mesh.matrixWorld
-                ),
-            });
-        });
-
-        instancedPartsCache.set(cacheKey, parts);
-        return parts;
-    }, [gltf.scene, url, targetHeight]);
+    const template: CachedInstancedTemplate = {
+        primitives,
+        normalizationMatrix: normMatrix,
+    };
+    INSTANCED_TEMPLATE_CACHE.set(cacheKey, template);
+    return template;
 }
 
-interface InstancedPartMeshProps {
-    part: GLBInstancedPart;
+export interface InstancedGLBFieldProps {
+    url: string;
+    targetHeight: number;
+    transforms: THREE.Matrix4[];
+    sinkOffset?: number;
+}
+
+const PrimitiveInstancedLayer: React.FC<{
+    primitive: ExtractedPrimitive;
+    normalizationMatrix: THREE.Matrix4;
     transforms: THREE.Matrix4[];
     castShadow: boolean;
-}
-
-const InstancedPartMesh: React.FC<InstancedPartMeshProps> = React.memo(
-    ({ part, transforms, castShadow }: InstancedPartMeshProps) => {
+}> = React.memo(
+    ({ primitive, normalizationMatrix, transforms, castShadow }) => {
         const meshRef = useRef<THREE.InstancedMesh>(null);
-        const scratch = useMemo(() => new THREE.Matrix4(), []);
 
         useLayoutEffect(() => {
-            const mesh = meshRef.current;
-            if (!mesh) return;
+            const inst = meshRef.current;
+            if (!inst || transforms.length === 0) return;
+
+            const combinedLocal = new THREE.Matrix4().multiplyMatrices(
+                normalizationMatrix,
+                primitive.localMatrix
+            );
+            const finalMat = new THREE.Matrix4();
+
             for (let i = 0; i < transforms.length; i++) {
-                scratch.multiplyMatrices(transforms[i], part.matrix);
-                mesh.setMatrixAt(i, scratch);
+                finalMat.multiplyMatrices(transforms[i], combinedLocal);
+                inst.setMatrixAt(i, finalMat);
             }
-            mesh.instanceMatrix.needsUpdate = true;
-            mesh.computeBoundingSphere();
-        }, [part, transforms, scratch]);
+
+            inst.instanceMatrix.needsUpdate = true;
+            inst.computeBoundingSphere();
+        }, [primitive, normalizationMatrix, transforms]);
 
         if (transforms.length === 0) return null;
 
         return (
             <instancedMesh
                 ref={meshRef}
-                args={[part.geometry, part.material, transforms.length]}
+                args={[
+                    primitive.geometry,
+                    primitive.material,
+                    transforms.length,
+                ]}
                 castShadow={castShadow}
                 receiveShadow
+                frustumCulled={true}
             />
         );
     }
 );
 
-InstancedPartMesh.displayName = 'InstancedPartMesh';
-
-export interface InstancedGLBFieldProps {
-    url: string;
-    targetHeight: number;
-    transforms: THREE.Matrix4[];
-    castShadow?: boolean;
-}
-
-/**
- * Draws many copies of one GLB with a single instanced draw call per mesh.
- */
 export const InstancedGLBField: React.FC<InstancedGLBFieldProps> = React.memo(
-    ({ url, targetHeight, transforms, castShadow = false }: InstancedGLBFieldProps) => {
-        const parts = useInstancedGLBParts(url, targetHeight);
+    ({ url, targetHeight, transforms, sinkOffset = -0.04 }) => {
+        const gltf = useGLTF(url, true, true, (loader) => {
+            loader.setMeshoptDecoder(MeshoptDecoder);
+        });
+
+        const template = useMemo(
+            () =>
+                getOrExtractInstancedTemplate(
+                    url,
+                    gltf.scene,
+                    targetHeight,
+                    sinkOffset
+                ),
+            [url, gltf.scene, targetHeight, sinkOffset]
+        );
+
+        const shouldCastShadow = targetHeight >= 2.5;
+
+        if (transforms.length === 0) return null;
 
         return (
             <group>
-                {parts.map((part, idx) => (
-                    <InstancedPartMesh
-                        key={`${url}-part-${idx}`}
-                        part={part}
+                {template.primitives.map((prim, idx) => (
+                    <PrimitiveInstancedLayer
+                        key={`${url}_prim_${idx}`}
+                        primitive={prim}
+                        normalizationMatrix={template.normalizationMatrix}
                         transforms={transforms}
-                        castShadow={castShadow}
+                        castShadow={shouldCastShadow}
                     />
                 ))}
             </group>
         );
     }
 );
-
-InstancedGLBField.displayName = 'InstancedGLBField';

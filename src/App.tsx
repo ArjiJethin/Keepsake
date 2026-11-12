@@ -4,6 +4,7 @@ import { GardenScene } from './scenes/GardenScene/GardenScene';
 import { LoadingScreen } from './components/LoadingScreen/LoadingScreen';
 import { CharacterSelectScreen } from './components/CharacterSelect/CharacterSelectScreen';
 import { GameHUD } from './components/UI/GameHUD';
+import { MobileJoystick } from './components/UI/MobileJoystick';
 import { CustomCursor } from './components/UI/CustomCursor';
 
 export const App: React.FC = () => {
@@ -15,11 +16,14 @@ export const App: React.FC = () => {
       {/* Calligraphic Brushstroke Loading & Intro Screen */}
       <LoadingScreen />
 
-      {/* 3D Wanderer Gallery picked after the intro */}
+      {/* Minimalist Centered Wanderer Selection Window (Male Left, Female Right) */}
       <CharacterSelectScreen />
 
-      {/* Infinite Chunk-Based 3D Low-Poly World, Explorer Character & Pointer-Lock Camera */}
+      {/* Infinite Chunk-Based 3D Low-Poly World, Explorer Character & Camera */}
       <GardenScene />
+
+      {/* Mobile Touchscreen Virtual Joystick (Bottom-Left, auto-fades when idle) */}
+      <MobileJoystick />
 
       {/* Parchment Exploration HUD & Memory Inspection Modal */}
       <GameHUD />

@@ -41,8 +41,26 @@ export const playerTelemetry = {
     moveState: 'idle' as 'idle' | 'walk' | 'run' | 'jump',
     nearestMemoryDistance: 999,
     nearestMemoryPosition: [0, 0, 0] as [number, number, number],
-    nearestMemoryRadiance: 0, // 0 (normal muted world) -> 1 (full golden vibrancy)
+    nearestMemoryRadiance: 0,
+    // Shared virtual joystick state (-1..1 for x and y) consumed by PlayerCharacter
+    joystick: {
+        x: 0,
+        y: 0,
+        active: false,
+    },
 };
+
+function detectDefaultQuality(): QualityPreset {
+    if (typeof window === 'undefined') return 'high';
+    const isSmallTouch =
+        window.matchMedia?.('(pointer: coarse)').matches &&
+        window.innerWidth < 900;
+    const lowCores =
+        typeof navigator !== 'undefined' &&
+        navigator.hardwareConcurrency !== undefined &&
+        navigator.hardwareConcurrency <= 4;
+    return isSmallTouch || lowCores ? 'low' : 'high';
+}
 
 interface GameState {
     phase: AppPhase;
@@ -114,7 +132,6 @@ export const useGameStore = create<GameState>((set) => ({
     setPhase: (phase) =>
         set({
             phase,
-            // Automatically enter camera mode upon transitioning to exploring
             inputMode: phase === 'exploring' ? 'camera' : 'cursor',
         }),
 
@@ -123,7 +140,7 @@ export const useGameStore = create<GameState>((set) => ({
     introSeen: false,
     markIntroSeen: () => set({ introSeen: true }),
 
-    quality: 'high',
+    quality: detectDefaultQuality(),
     toggleQuality: () =>
         set((state) => ({
             quality: state.quality === 'high' ? 'low' : 'high',
@@ -136,6 +153,9 @@ export const useGameStore = create<GameState>((set) => ({
         playerTelemetry.position = [0, spawnY, 7.5];
         playerTelemetry.velocity = [0, 0, 0];
         playerTelemetry.rotationY = Math.PI;
+        playerTelemetry.joystick.x = 0;
+        playerTelemetry.joystick.y = 0;
+        playerTelemetry.joystick.active = false;
         set({
             worldSeed: applied,
             activeChunkCoord: [0, 0],
@@ -153,6 +173,9 @@ export const useGameStore = create<GameState>((set) => ({
         playerTelemetry.position = [0, spawnY, 7.5];
         playerTelemetry.velocity = [0, 0, 0];
         playerTelemetry.rotationY = Math.PI;
+        playerTelemetry.joystick.x = 0;
+        playerTelemetry.joystick.y = 0;
+        playerTelemetry.joystick.active = false;
         set({
             worldSeed: applied,
             activeChunkCoord: [0, 0],
@@ -289,17 +312,17 @@ export const useGameStore = create<GameState>((set) => ({
             activeMemory: memory,
             activeEchoId: memory.id,
             activeModal: 'memory',
-            inputMode: 'cursor', // Opening memory viewer immediately enables cursor mode
+            inputMode: 'cursor',
             discoveredIds: state.discoveredIds.includes(memory.id)
                 ? state.discoveredIds
-                : [...state.discoveredIds, memory.id],
+                : [...state.discoveredIds, idOf(memory)],
         })),
     closeMemory: () =>
         set({
             activeMemory: null,
             activeEchoId: null,
             activeModal: 'none',
-            inputMode: 'camera', // Closing returns directly to camera mode
+            inputMode: 'camera',
         }),
 
     activeEchoId: null,
@@ -320,3 +343,7 @@ export const useGameStore = create<GameState>((set) => ({
                 : [...state.discoveredIds, id],
         })),
 }));
+
+function idOf(memory: MemoryItem): string {
+    return memory.id;
+}

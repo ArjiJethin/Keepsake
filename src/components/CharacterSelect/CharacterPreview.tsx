@@ -1,5 +1,5 @@
 // src/components/CharacterSelect/CharacterPreview.tsx
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -14,62 +14,38 @@ const MALE_PREVIEW_PATH = '/KeepSakeMale-v2-animated.glb';
 const PREVIEW_SCALE = 1.78;
 const PREVIEW_FOOT_OFFSET = 0.871;
 
-export type CharacterPreviewMode = 'portrait' | 'upper';
-
-interface CameraSetup {
-    position: [number, number, number];
-    lookAt: [number, number, number];
-    fov: number;
-}
-
-const CAMERA_SETUPS: Record<CharacterPreviewMode, CameraSetup> = {
-    // Full-body portrait
-    portrait: { position: [0, 1.02, 4.35], lookAt: [0, 0.68, 0], fov: 30 },
-    // Waist-up close-up so the walk cycle reads clearly
-    upper: { position: [0, 1.52, 1.85], lookAt: [0, 1.24, 0], fov: 36 },
-};
-
-const PreviewCamera: React.FC<{ mode: CharacterPreviewMode }> = ({ mode }) => {
+const PreviewCamera: React.FC = () => {
     const camera = useThree((state) => state.camera);
-    const setup = CAMERA_SETUPS[mode];
 
     useEffect(() => {
-        camera.position.set(...setup.position);
-        camera.lookAt(...setup.lookAt);
+        camera.position.set(0, 1.04, 3.65);
+        camera.lookAt(0, 0.92, 0);
         if (camera instanceof THREE.PerspectiveCamera) {
-            camera.fov = setup.fov;
+            camera.fov = 30;
         }
         camera.updateProjectionMatrix();
-    }, [camera, setup]);
+    }, [camera]);
 
     return null;
 };
 
 const PreviewLights: React.FC = () => (
     <>
-        <ambientLight intensity={0.9} color="#f7dfc6" />
-        <hemisphereLight args={['#ffe2bd', '#6b5a55', 0.7]} />
-        <directionalLight position={[2.6, 3.6, 4.4]} intensity={2.2} color="#ffe3bd" />
-        <directionalLight position={[-3.2, 2.0, -2.6]} intensity={0.85} color="#c9a8c3" />
+        <ambientLight intensity={1.0} color="#f7e3cc" />
+        <hemisphereLight args={['#ffe6c8', '#6b5a55', 0.78]} />
+        <directionalLight position={[2.4, 3.8, 4.2]} intensity={2.1} color="#ffe5c2" />
+        <directionalLight position={[-2.8, 2.0, -2.4]} intensity={0.75} color="#d4b2cc" />
     </>
 );
 
-interface CharacterModelProps {
+interface CharacterPreviewProps {
     archetype: CharacterArchetype;
-    rotationY?: number;
-    position?: [number, number, number];
-    animate?: boolean;
+    isSelected?: boolean;
 }
 
-/**
- * One skeleton clone, one mixer, optional walk cycle. Shared by the waist-up
- * preview and the four-view sheet so both use the same loaded GLB.
- */
-const CharacterModel: React.FC<CharacterModelProps> = ({
+export const CharacterPreview: React.FC<CharacterPreviewProps> = ({
     archetype,
-    rotationY = 0,
-    position = [0, 0, 0],
-    animate = false,
+    isSelected = false,
 }) => {
     const gltf = useGLTF(
         archetype === 'female' ? FEMALE_PREVIEW_PATH : MALE_PREVIEW_PATH,
@@ -79,6 +55,8 @@ const CharacterModel: React.FC<CharacterModelProps> = ({
             loader.setMeshoptDecoder(MeshoptDecoder);
         }
     );
+
+    const turntableRef = useRef<THREE.Group>(null);
 
     const scene = useMemo(() => {
         const clone = cloneSkeleton(gltf.scene);
@@ -101,7 +79,6 @@ const CharacterModel: React.FC<CharacterModelProps> = ({
             gltf.animations[0];
 
         if (clip) {
-            // Strip root translation so the wanderer strides in place
             const tracks = clip.tracks.filter(
                 (track) => !track.name.endsWith('root.position')
             );
@@ -112,7 +89,7 @@ const CharacterModel: React.FC<CharacterModelProps> = ({
             );
             const action = instance.clipAction(prepared);
             action.setLoop(THREE.LoopRepeat, Infinity);
-            action.timeScale = 0.55;
+            action.timeScale = 0.52;
             action.play();
         }
 
@@ -120,8 +97,7 @@ const CharacterModel: React.FC<CharacterModelProps> = ({
     }, [scene, gltf.animations]);
 
     useEffect(() => {
-        // Freeze a readable mid-stride pose for the static views
-        mixer.setTime(0.6);
+        mixer.setTime(0.45);
         return () => {
             mixer.stopAllAction();
             mixer.uncacheRoot(scene);
@@ -129,93 +105,39 @@ const CharacterModel: React.FC<CharacterModelProps> = ({
     }, [mixer, scene]);
 
     useFrame((_, rawDelta) => {
-        if (animate) {
-            mixer.update(Math.min(rawDelta, 0.05));
+        const delta = Math.min(rawDelta, 0.05);
+        mixer.update(isSelected ? delta : delta * 0.35);
+
+        if (turntableRef.current) {
+            const targetRot = isSelected ? 0.14 : -0.12;
+            turntableRef.current.rotation.y = THREE.MathUtils.lerp(
+                turntableRef.current.rotation.y,
+                targetRot,
+                delta * 4.5
+            );
         }
     });
 
     return (
-        <group position={position} rotation={[0, rotationY, 0]}>
-            <primitive
-                object={scene}
-                scale={PREVIEW_SCALE}
-                position={[0, PREVIEW_FOOT_OFFSET, 0]}
-            />
+        <group>
+            <group ref={turntableRef}>
+                <primitive
+                    object={scene}
+                    scale={PREVIEW_SCALE}
+                    position={[0, PREVIEW_FOOT_OFFSET, 0]}
+                />
+                {/* Soft ground contact shadow disc */}
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
+                    <circleGeometry args={[0.42, 24]} />
+                    <meshBasicMaterial
+                        color="#3b2c24"
+                        transparent
+                        opacity={isSelected ? 0.28 : 0.16}
+                    />
+                </mesh>
+            </group>
+            <PreviewCamera />
+            <PreviewLights />
         </group>
     );
 };
-
-interface CharacterPreviewProps {
-    archetype: CharacterArchetype;
-    mode?: CharacterPreviewMode;
-}
-
-/**
- * Animated wanderer used by the walk-cycle half of the select stage.
- */
-export const CharacterPreview: React.FC<CharacterPreviewProps> = ({
-    archetype,
-    mode = 'upper',
-}) => (
-    <group>
-        <CharacterModel archetype={archetype} animate />
-        <PreviewCamera mode={mode} />
-        <PreviewLights />
-    </group>
-);
-
-const SHEET_VIEWS: Array<{
-    label: string;
-    rotation: number;
-    x: number;
-    y: number;
-}> = [
-    { label: 'Front', rotation: 0, x: -0.98, y: 2.42 },
-    { label: 'Side', rotation: -Math.PI / 2, x: 0.98, y: 2.42 },
-    { label: 'Back', rotation: Math.PI, x: -0.98, y: 0 },
-    { label: '3/4', rotation: -Math.PI / 4, x: 0.98, y: 0 },
-];
-
-const SheetCamera: React.FC = () => {
-    const camera = useThree((state) => state.camera);
-
-    useEffect(() => {
-        camera.position.set(0, 2.05, 8.6);
-        camera.lookAt(0, 2.05, 0);
-        if (camera instanceof THREE.PerspectiveCamera) {
-            camera.fov = 30;
-        }
-        camera.updateProjectionMatrix();
-    }, [camera]);
-
-    return null;
-};
-
-/**
- * Front / side / back / three-quarter turnaround on a 2x2 grid, drawn in one
- * canvas (four poses, one render loop) instead of four separate WebGL contexts.
- */
-export const CharacterSheet: React.FC<{ archetype: CharacterArchetype }> = ({
-    archetype,
-}) => (
-    <group>
-        {SHEET_VIEWS.map((view) => (
-            <group key={view.label}>
-                <CharacterModel
-                    archetype={archetype}
-                    rotationY={view.rotation}
-                    position={[view.x, view.y, 0]}
-                />
-                <mesh
-                    rotation={[-Math.PI / 2, 0, 0]}
-                    position={[view.x, view.y + 0.012, 0]}
-                >
-                    <circleGeometry args={[0.34, 18]} />
-                    <meshBasicMaterial color="#0a0709" transparent opacity={0.26} />
-                </mesh>
-            </group>
-        ))}
-        <SheetCamera />
-        <PreviewLights />
-    </group>
-);

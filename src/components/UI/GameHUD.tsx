@@ -1,556 +1,768 @@
 // src/components/UI/GameHUD.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     BookOpen,
-    Settings,
-    X,
+    Compass,
+    Flower2,
+    HelpCircle,
     MapPin,
-    Calendar,
-    Volume2,
-    Sprout,
-    Layers,
-    Navigation,
+    MousePointer,
+    Plus,
     RefreshCw,
-    Hash,
-    Check,
-    Feather,
-    MousePointer2,
+    Sparkles,
+    UserCheck,
+    X,
 } from 'lucide-react';
-import { playerTelemetry, useGameStore } from '../../store/useGameStore';
+import {
+    playerTelemetry,
+    useGameStore,
+} from '../../store/useGameStore';
 import {
     BIOME_CONFIGS,
     getGardenTerrainHeight,
 } from '../../scenes/Environment/lowPolyUtils';
-import {
-    KEEPSAKE_ASSET_MANIFEST,
-    type AssetManifestEntry,
-} from '../../systems/AssetManager/glbExporter';
+import type {
+    MemoryCategory,
+    MemoryImportance,
+    MemoryItem,
+} from '../../systems/MemoryManager/memoryTypes';
 import './GameHUD.css';
-
-const WANDERER_NAMES = {
-    female: 'Aria',
-    male: 'Rowan',
-} as const;
 
 export const GameHUD: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
+    const setPhase = useGameStore((state) => state.setPhase);
     const inputMode = useGameStore((state) => state.inputMode);
-    const setInputMode = useGameStore((state) => state.setInputMode);
     const toggleInputMode = useGameStore((state) => state.toggleInputMode);
-    const nearbyMemory = useGameStore((state) => state.nearbyMemory);
-    const activeMemory = useGameStore((state) => state.activeMemory);
-    const persistentMemories = useGameStore((state) => state.persistentMemories);
-    const openMemory = useGameStore((state) => state.openMemory);
-    const closeMemory = useGameStore((state) => state.closeMemory);
-    const advanceMemoryGrowth = useGameStore((state) => state.advanceMemoryGrowth);
-    const discoveredIds = useGameStore((state) => state.discoveredIds);
     const characterModel = useGameStore((state) => state.characterModel);
-    const toggleCharacterModel = useGameStore(
-        (state) => state.toggleCharacterModel
-    );
-    const nearbyZone = useGameStore((state) => state.nearbyZone);
     const worldSeed = useGameStore((state) => state.worldSeed);
     const setWorldSeed = useGameStore((state) => state.setWorldSeed);
     const regenerateWorldSeed = useGameStore(
         (state) => state.regenerateWorldSeed
     );
     const currentBiome = useGameStore((state) => state.currentBiome);
-    const setPhase = useGameStore((state) => state.setPhase);
-    const setIntroStage = useGameStore((state) => state.setIntroStage);
 
-    const [showAssetCatalog, setShowAssetCatalog] = useState(false);
-    const [showSettings, setShowSettings] = useState(false);
-    const [isEditingSeed, setIsEditingSeed] = useState(false);
-    const [seedDraft, setSeedDraft] = useState(worldSeed);
+    const nearbyMemory = useGameStore((state) => state.nearbyMemory);
+    const nearbyZone = useGameStore((state) => state.nearbyZone);
+    const activeMemory = useGameStore((state) => state.activeMemory);
+    const openMemory = useGameStore((state) => state.openMemory);
+    const closeMemory = useGameStore((state) => state.closeMemory);
+    const activeModal = useGameStore((state) => state.activeModal);
+    const setActiveModal = useGameStore((state) => state.setActiveModal);
 
-    const settingsAnchorRef = useRef<HTMLDivElement>(null);
+    const persistentMemories = useGameStore(
+        (state) => state.persistentMemories
+    );
+    const discoveredIds = useGameStore((state) => state.discoveredIds);
+    const advanceMemoryGrowth = useGameStore(
+        (state) => state.advanceMemoryGrowth
+    );
+    const addNewMemory = useGameStore((state) => state.addNewMemory);
+
+    const quality = useGameStore((state) => state.quality);
+    const toggleQuality = useGameStore((state) => state.toggleQuality);
+
+    const [seedInput, setSeedInput] = useState(worldSeed);
+    const [showControlsHelp, setShowControlsHelp] = useState(false);
+
+    // Create Memory Form State
+    const [newTitle, setNewTitle] = useState('');
+    const [newSubtitle, setNewSubtitle] = useState('');
+    const [newLocation, setNewLocation] = useState('');
+    const [newCategory, setNewCategory] = useState<MemoryCategory>('photo');
+    const [newImportance, setNewImportance] =
+        useState<MemoryImportance>('cherished');
+    const [newDescription, setNewDescription] = useState('');
+    const [newNote, setNewNote] = useState('');
 
     useEffect(() => {
-        setSeedDraft(worldSeed);
+        setSeedInput(worldSeed);
     }, [worldSeed]);
 
     useEffect(() => {
+        if (phase !== 'exploring') return;
+
         const onKeyDown = (e: KeyboardEvent) => {
-            if (isEditingSeed) return;
-            const state = useGameStore.getState();
-            if (e.code === 'KeyC' && phase === 'exploring' && !state.activeMemory) {
-                toggleCharacterModel();
+            if (
+                document.activeElement?.tagName === 'INPUT' ||
+                document.activeElement?.tagName === 'TEXTAREA'
+            ) {
+                return;
             }
-            if (e.code === 'Escape') {
-                setShowSettings(false);
-                setShowAssetCatalog(false);
+
+            if (e.code === 'KeyE' && nearbyMemory && activeModal === 'none') {
+                e.preventDefault();
+                openMemory(nearbyMemory);
+            } else if (e.code === 'KeyJ') {
+                e.preventDefault();
+                setActiveModal(
+                    activeModal === 'journal' ? 'none' : 'journal'
+                );
+            } else if (e.code === 'Escape' && activeModal !== 'none') {
+                e.preventDefault();
+                if (activeModal === 'memory') closeMemory();
+                else setActiveModal('none');
             }
         };
+
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [phase, toggleCharacterModel, isEditingSeed]);
-
-    // Clicking anywhere outside the settings popover dismisses it
-    useEffect(() => {
-        if (!showSettings) return;
-        const onPointerDown = (event: PointerEvent) => {
-            const anchor = settingsAnchorRef.current;
-            if (anchor && !anchor.contains(event.target as Node)) {
-                setShowSettings(false);
-            }
-        };
-        window.addEventListener('pointerdown', onPointerDown);
-        return () => window.removeEventListener('pointerdown', onPointerDown);
-    }, [showSettings]);
+    }, [
+        phase,
+        nearbyMemory,
+        activeModal,
+        openMemory,
+        closeMemory,
+        setActiveModal,
+    ]);
 
     if (phase !== 'exploring') return null;
 
-    const currentMemoryData = activeMemory
-        ? persistentMemories.find((m) => m.id === activeMemory.id) || activeMemory
-        : null;
+    const biomeInfo = BIOME_CONFIGS[currentBiome] ?? BIOME_CONFIGS.memory_sanctuary;
 
-    const activeBiomeMeta = BIOME_CONFIGS[currentBiome];
-
-    const handleReplayIntro = () => {
-        closeMemory();
-        setShowAssetCatalog(false);
-        setShowSettings(false);
-        setIntroStage(1);
-        setPhase('loading');
-    };
-
-    const handleTeleportToAsset = (entry: AssetManifestEntry) => {
-        const [tx, tz] = entry.worldCoords;
-        const ty = getGardenTerrainHeight(tx, tz);
-        playerTelemetry.position = [tx, ty, tz];
-        playerTelemetry.velocity = [0, 0, 0];
-        setShowAssetCatalog(false);
-        setInputMode('camera');
-    };
-
-    const handleApplyCustomSeed = (e: React.FormEvent) => {
+    const handlePlantMemory = (e: React.FormEvent) => {
         e.preventDefault();
-        if (seedDraft.trim().length > 0) {
-            setWorldSeed(seedDraft.trim());
+        if (!newTitle.trim()) return;
+
+        const [px, , pz] = playerTelemetry.position;
+        const yaw = playerTelemetry.rotationY;
+        const placeX = px + Math.sin(yaw) * 2.2;
+        const placeZ = pz + Math.cos(yaw) * 2.2;
+        const placeY = getGardenTerrainHeight(placeX, placeZ);
+
+        const created: MemoryItem = {
+            id: `mem-custom-${Date.now()}`,
+            title: newTitle.trim(),
+            subtitle: newSubtitle.trim() || 'Personal Keepsake',
+            date: new Date().toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+            }),
+            location: newLocation.trim() || biomeInfo.name,
+            category: newCategory,
+            pedestalVariant:
+                newImportance === 'core'
+                    ? 'grand_portal'
+                    : newImportance === 'milestone'
+                        ? 'arched'
+                        : 'minimal',
+            description:
+                newDescription.trim() ||
+                'A quiet moment preserved within the sanctuary garden.',
+            position: [placeX, placeY, placeZ],
+            rotationY: yaw + Math.PI,
+            tags: ['Personal', biomeInfo.name],
+            importance: newImportance,
+            growthStage: 'seed',
+            interactionState: 'awakened',
+            isDiscovered: true,
+            echo: {
+                floatingPhotoTitle: newTitle.trim(),
+                writtenNote:
+                    newNote.trim() ||
+                    newDescription.trim() ||
+                    'Planted with care in the garden.',
+            },
+        };
+
+        addNewMemory(created);
+        setNewTitle('');
+        setNewSubtitle('');
+        setNewLocation('');
+        setNewDescription('');
+        setNewNote('');
+        setActiveModal('none');
+    };
+
+    const handleApplySeed = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (seedInput.trim()) {
+            setWorldSeed(seedInput.trim());
         }
-        setIsEditingSeed(false);
-        setInputMode('camera');
     };
-
-    const handleRegenerateWorld = () => {
-        const nextSeed = regenerateWorldSeed();
-        setSeedDraft(nextSeed);
-        setIsEditingSeed(false);
-    };
-
-    const handleOpenJournal = () => {
-        const target = nearbyMemory || persistentMemories[0];
-        if (target) openMemory(target);
-    };
-
-    const regionLabel = nearbyZone ? nearbyZone.name : activeBiomeMeta.name;
 
     return (
-        <div className="kh-hud">
-            {/* Top-left: wordmark only, like a title watermark */}
-            <div className="kh-brand">
-                <span className="kh-brand-text">Keepsake</span>
-                <svg
-                    className="kh-brand-leaf"
-                    viewBox="0 0 32 32"
-                    width="17"
-                    height="17"
-                    aria-hidden="true"
-                >
-                    <path d="M6,26 C10,12 20,6 30,4 C26,16 18,24 6,26 Z" fill="currentColor" />
-                </svg>
-            </div>
-
-            {/* Top-center: region name, nothing else */}
-            {!currentMemoryData && !showAssetCatalog && !showSettings && (
-                <div className="kh-region-pill">
-                    <MapPin size={12} strokeWidth={2.2} />
-                    <span>{regionLabel}</span>
-                </div>
-            )}
-
-            {/* Top-right: icon rail */}
-            <div className="kh-icon-rail">
-                <button
-                    type="button"
-                    className="kh-icon-btn"
-                    onClick={handleOpenJournal}
-                    title="Memory journal"
-                >
-                    <BookOpen size={16} />
-                    <span className="kh-icon-badge">
-                        {discoveredIds.length}/{persistentMemories.length}
-                    </span>
-                </button>
-
-                <button
-                    type="button"
-                    className={`kh-icon-btn${showAssetCatalog ? ' kh-icon-btn--on' : ''}`}
-                    onClick={() => {
-                        setShowAssetCatalog((prev) => !prev);
-                        setShowSettings(false);
-                        setInputMode('cursor');
-                    }}
-                    title={`World library — ${KEEPSAKE_ASSET_MANIFEST.length} models`}
-                >
-                    <Layers size={16} />
-                    <span className="kh-icon-badge kh-icon-badge--count">
-                        {KEEPSAKE_ASSET_MANIFEST.length}
-                    </span>
-                </button>
-
-                <div className="kh-settings-anchor" ref={settingsAnchorRef}>
-                    <button
-                        type="button"
-                        className={`kh-icon-btn${showSettings ? ' kh-icon-btn--on' : ''}`}
-                        onClick={() => {
-                            setShowSettings((prev) => !prev);
-                            setShowAssetCatalog(false);
-                        }}
-                        title="Settings"
-                        aria-expanded={showSettings}
-                    >
-                        <Settings size={16} />
-                    </button>
-
-                    {showSettings && (
-                        <div className="kh-settings" role="dialog" aria-label="Settings">
-                            <div className="kh-settings-head">
-                                <span className="kh-settings-title">Settings</span>
-                                <button
-                                    type="button"
-                                    className="kh-settings-close"
-                                    onClick={() => setShowSettings(false)}
-                                    aria-label="Close settings"
-                                >
-                                    <X size={14} />
-                                </button>
-                            </div>
-
-                            <div className="kh-settings-body">
-                                <div className="kh-setting-line">
-                                    <span className="kh-setting-label">Wanderer</span>
-                                    <span className="kh-setting-value">
-                                        {WANDERER_NAMES[characterModel]}
-                                        <kbd className="kh-key">C</kbd>
-                                    </span>
-                                </div>
-
-                                <div className="kh-setting-block">
-                                    <span className="kh-setting-label">World seed</span>
-                                    {!isEditingSeed ? (
-                                        <div className="kh-seed-row">
-                                            <span className="kh-seed-value">
-                                                <Hash size={11} />
-                                                {worldSeed}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                className="kh-icon-mini"
-                                                onClick={() => {
-                                                    setIsEditingSeed(true);
-                                                    setInputMode('cursor');
-                                                }}
-                                                title="Enter a custom seed"
-                                            >
-                                                <Feather size={13} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="kh-icon-mini"
-                                                onClick={handleRegenerateWorld}
-                                                title="Generate a new world"
-                                            >
-                                                <RefreshCw size={13} />
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <form
-                                            className="kh-seed-form"
-                                            onSubmit={handleApplyCustomSeed}
-                                        >
-                                            <input
-                                                className="kh-seed-input"
-                                                value={seedDraft}
-                                                onChange={(e) => setSeedDraft(e.target.value)}
-                                                placeholder="Seed…"
-                                                maxLength={24}
-                                                autoFocus
-                                            />
-                                            <button
-                                                type="submit"
-                                                className="kh-icon-mini kh-icon-mini--apply"
-                                                title="Load this seed"
-                                            >
-                                                <Check size={13} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="kh-icon-mini"
-                                                onClick={() => setIsEditingSeed(false)}
-                                                title="Cancel"
-                                            >
-                                                <X size={13} />
-                                            </button>
-                                        </form>
-                                    )}
-                                </div>
-
-                                <div className="kh-settings-actions">
-                                    <button
-                                        type="button"
-                                        className="kh-settings-btn"
-                                        onClick={handleReplayIntro}
-                                    >
-                                        Return to title
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* World library modal */}
-            {showAssetCatalog && (
-                <div
-                    className="memory-modal-backdrop"
-                    onClick={() => setShowAssetCatalog(false)}
-                >
-                    <div
-                        className="memory-parchment-card asset-catalog-card"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <button
-                            type="button"
-                            className="memory-close-btn"
-                            onClick={() => setShowAssetCatalog(false)}
-                            aria-label="Close world library"
-                        >
-                            <X size={18} />
-                        </button>
-
-                        <div className="memory-card-header">
-                            <span className="memory-category-tag">World Asset Library</span>
-                            <h2 className="memory-card-title">Keepsake 3D World Library</h2>
-                            <p className="memory-card-subtitle">
-                                Pick any model to travel straight to where it rests in
-                                the garden.
-                            </p>
-                        </div>
-
-                        <div className="asset-manifest-list">
-                            {KEEPSAKE_ASSET_MANIFEST.map((item) => (
-                                <div key={item.id} className="asset-manifest-row">
-                                    <div className="asset-manifest-info">
-                                        <div className="asset-manifest-title-row">
-                                            <strong>{item.name}</strong>
-                                            <span className="asset-manifest-dim">
-                                                {item.dimensions}
-                                            </span>
-                                        </div>
-                                        <span className="asset-manifest-path">
-                                            {item.filename}
-                                        </span>
-                                        <p className="asset-manifest-desc">
-                                            {item.intendedUse}
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="asset-teleport-btn"
-                                        onClick={() => handleTeleportToAsset(item)}
-                                    >
-                                        <Navigation size={14} />
-                                        <span>Visit</span>
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
+        <div className="hud-overlay">
+            {/* ================================================================
+                TOP BAR: Compact Parchment Biome Pill & Action Buttons
+               ================================================================ */}
+            <header className="hud-top-bar" data-ui-interactive="true">
+                {/* Left: Biome & Memory Counter Pill */}
+                <div className="hud-parchment-pill hud-biome-pill">
+                    <Compass size={16} className="hud-icon-warm" />
+                    <div className="hud-biome-text">
+                        <span className="hud-biome-name">{biomeInfo.name}</span>
+                        <span className="hud-biome-sep">·</span>
+                        <span className="hud-memory-tally">
+                            {discoveredIds.length}/{persistentMemories.length} Keepsakes
+                        </span>
                     </div>
                 </div>
-            )}
 
-            {/* Contextual proximity prompt */}
-            {nearbyMemory && !currentMemoryData && !showAssetCatalog && (
-                <div className="hud-proximity-prompt">
+                {/* Right: Compact Parchment Buttons matching "Enter the Garden" */}
+                <div className="hud-action-group">
                     <button
                         type="button"
-                        className="remember-prompt-pill"
+                        className={`hud-parchment-btn ${
+                            activeModal === 'journal' ? 'hud-parchment-btn--active' : ''
+                        }`}
+                        onClick={() =>
+                            setActiveModal(
+                                activeModal === 'journal' ? 'none' : 'journal'
+                            )
+                        }
+                        title="Memory Chronicle (J)"
+                    >
+                        <BookOpen size={15} />
+                        <span>Chronicle</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        className={`hud-parchment-btn ${
+                            activeModal === 'createMemory'
+                                ? 'hud-parchment-btn--active'
+                                : ''
+                        }`}
+                        onClick={() =>
+                            setActiveModal(
+                                activeModal === 'createMemory'
+                                    ? 'none'
+                                    : 'createMemory'
+                            )
+                        }
+                        title="Plant a New Keepsake Memory"
+                    >
+                        <Plus size={15} />
+                        <span>Plant Memory</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        className="hud-parchment-btn"
+                        onClick={() => setPhase('characterSelect')}
+                        title="Switch Wanderer"
+                    >
+                        <UserCheck size={15} />
+                        <span className="hud-btn-label-desktop">
+                            {characterModel === 'female' ? 'Aria' : 'Rowan'}
+                        </span>
+                    </button>
+
+                    <button
+                        type="button"
+                        className={`hud-parchment-btn hud-parchment-btn--icon ${
+                            activeModal === 'settings'
+                                ? 'hud-parchment-btn--active'
+                                : ''
+                        }`}
+                        onClick={() =>
+                            setActiveModal(
+                                activeModal === 'settings' ? 'none' : 'settings'
+                            )
+                        }
+                        title="World Seed & Quality Settings"
+                        aria-label="World Seed and Quality Settings"
+                    >
+                        <Sparkles size={15} />
+                    </button>
+
+                    <button
+                        type="button"
+                        className={`hud-parchment-btn hud-parchment-btn--icon ${
+                            showControlsHelp ? 'hud-parchment-btn--active' : ''
+                        }`}
+                        onClick={() => setShowControlsHelp((v) => !v)}
+                        title="Controls & Guide"
+                        aria-label="Controls and Guide"
+                    >
+                        <HelpCircle size={15} />
+                    </button>
+                </div>
+            </header>
+
+            {/* ================================================================
+                LANDMARK ZONE BANNER (Subtle Top-Center Notification)
+               ================================================================ */}
+            {nearbyZone && activeModal === 'none' && (
+                <div className="hud-zone-banner" data-ui-interactive="true">
+                    <span className="hud-zone-kicker">Sanctuary Landmark</span>
+                    <strong className="hud-zone-title">{nearbyZone.name}</strong>
+                </div>
+            )}
+
+            {/* ================================================================
+                NEARBY MEMORY INTERACTION PROMPT (Bottom-Center Parchment Button)
+               ================================================================ */}
+            {nearbyMemory && activeModal === 'none' && (
+                <div className="hud-interact-dock" data-ui-interactive="true">
+                    <button
+                        type="button"
+                        className="hud-interact-btn"
                         onClick={() => openMemory(nearbyMemory)}
                     >
-                        <span className="remember-prompt-text">Remember?</span>
-                        <kbd className="hud-mini-key hud-mini-key--ink">E</kbd>
+                        <span className="hud-interact-key">E</span>
+                        <div className="hud-interact-copy">
+                            <span className="hud-interact-kicker">
+                                Inspect Keepsake
+                            </span>
+                            <strong className="hud-interact-title">
+                                {nearbyMemory.title}
+                            </strong>
+                        </div>
                     </button>
-                    <span className="remember-prompt-subtitle">
-                        {nearbyMemory.title}
-                    </span>
                 </div>
             )}
 
-            {/* Bottom-left: compact control legend */}
-            <div className="kh-controls">
-                <div className="kh-controls-row">
-                    <span className="kh-controls-label">Move</span>
-                    <span className="kh-key-cluster">
-                        <kbd className="kh-key">W</kbd>
-                        <kbd className="kh-key">A</kbd>
-                        <kbd className="kh-key">S</kbd>
-                        <kbd className="kh-key">D</kbd>
-                    </span>
-                    <span className="kh-control-inline">
-                        <kbd className="kh-key kh-key--wide">Shift</kbd>
-                        <span>Sprint</span>
-                    </span>
-                    <span className="kh-control-inline">
-                        <kbd className="kh-key kh-key--wide">Space</kbd>
-                        <span>Jump</span>
-                    </span>
-                </div>
-
-                <div className="kh-controls-row">
-                    <span className="kh-controls-label">Act</span>
-                    <button
-                        type="button"
-                        className="kh-control-inline kh-control-inline--btn"
-                        onClick={() => openMemory(nearbyMemory || persistentMemories[0])}
-                        title="Remember a memory"
-                    >
-                        <kbd className="kh-key">E</kbd>
-                        <span>Remember</span>
-                    </button>
-                    <button
-                        type="button"
-                        className="kh-control-inline kh-control-inline--btn"
-                        onClick={toggleCharacterModel}
-                        title="Change character"
-                    >
-                        <kbd className="kh-key">C</kbd>
-                        <span>Character</span>
-                    </button>
-                    <button
-                        type="button"
-                        className={`kh-control-inline kh-control-inline--btn${inputMode === 'cursor' ? ' kh-control-inline--on' : ''
-                            }`}
-                        onClick={toggleInputMode}
-                        title="Toggle camera and cursor mode"
-                    >
-                        <MousePointer2 size={11} strokeWidth={2.3} />
-                        <kbd className="kh-key kh-key--wide">Alt</kbd>
-                        <span>{inputMode === 'cursor' ? 'Cursor' : 'Look'}</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Memory echo modal */}
-            {currentMemoryData && (
-                <div className="memory-modal-backdrop" onClick={closeMemory}>
-                    <div
-                        className="memory-parchment-card"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <button
-                            type="button"
-                            className="memory-close-btn"
-                            onClick={closeMemory}
-                            aria-label="Close memory echo"
-                        >
-                            <X size={18} />
-                        </button>
-
-                        <div className="memory-card-header">
-                            <div className="memory-badges-row">
-                                <span className="memory-category-tag">
-                                    {currentMemoryData.category} echo
-                                </span>
-                                <span className="memory-stage-badge">
-                                    <Sprout size={12} />
-                                    {currentMemoryData.subtitle}
-                                </span>
-                                {currentMemoryData.importance && (
-                                    <span className="memory-importance-badge">
-                                        {currentMemoryData.importance}
-                                    </span>
-                                )}
-                            </div>
-                            <h2 className="memory-card-title">
-                                {currentMemoryData.title}
-                            </h2>
-                            <p className="memory-card-subtitle">
-                                {currentMemoryData.location}
-                            </p>
-                        </div>
-
-                        <div className="memory-visual-frame">
-                            <div className="memory-visual-art">
-                                <div className="memory-art-sun" />
-                                <div className="memory-art-mountains" />
-                                <div className="memory-art-meadow" />
-                                {currentMemoryData.echo?.ambientAudioLabel && (
-                                    <div className="memory-echo-audio-pill">
-                                        <Volume2 size={13} />
-                                        <span>
-                                            {currentMemoryData.echo.ambientAudioLabel}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {currentMemoryData.echo?.voiceTranscript && (
-                            <blockquote className="memory-voice-echo">
-                                {currentMemoryData.echo.voiceTranscript}
-                            </blockquote>
-                        )}
-
-                        <div className="memory-meta-row">
-                            <span className="memory-meta-item">
-                                <Calendar size={13} /> {currentMemoryData.date}
-                            </span>
-                            <span className="memory-meta-item">
-                                <MapPin size={13} /> {currentMemoryData.location}
-                            </span>
-                            {currentMemoryData.people && (
-                                <span className="memory-meta-item">
-                                    With {currentMemoryData.people.join(', ')}
-                                </span>
-                            )}
-                        </div>
-
-                        <p className="memory-card-description">
-                            {currentMemoryData.description}
-                        </p>
-
-                        <div className="memory-tag-list">
-                            {currentMemoryData.tags.map((tag) => (
-                                <span key={tag} className="memory-tag-chip">
-                                    #{tag}
-                                </span>
-                            ))}
-                        </div>
-
-                        <div className="memory-card-footer">
-                            {currentMemoryData.growthStage !== 'landmark' && (
-                                <button
-                                    type="button"
-                                    className="memory-nourish-btn"
-                                    onClick={() =>
-                                        advanceMemoryGrowth(currentMemoryData.id)
-                                    }
-                                >
-                                    <Sprout size={15} />
-                                    <span>Nourish</span>
-                                </button>
-                            )}
+            {/* ================================================================
+                CONTROLS & CURSOR MODE PILL (Bottom-Right)
+               ================================================================ */}
+            <div className="hud-bottom-right" data-ui-interactive="true">
+                {showControlsHelp && (
+                    <div className="hud-controls-popover">
+                        <div className="hud-popover-header">
+                            <span>Wanderer Controls</span>
                             <button
                                 type="button"
-                                className="memory-return-btn"
-                                onClick={closeMemory}
+                                className="hud-close-mini"
+                                onClick={() => setShowControlsHelp(false)}
+                                aria-label="Close help"
                             >
-                                Return to the Garden
+                                <X size={13} />
                             </button>
                         </div>
+                        <ul className="hud-controls-list">
+                            <li>
+                                <span>Move</span>
+                                <strong>WASD / Left Joystick</strong>
+                            </li>
+                            <li>
+                                <span>Sprint</span>
+                                <strong>Shift / Full Tilt</strong>
+                            </li>
+                            <li>
+                                <span>Jump</span>
+                                <strong>Space</strong>
+                            </li>
+                            <li>
+                                <span>Look Around</span>
+                                <strong>Mouse / Right Touch Drag</strong>
+                            </li>
+                            <li>
+                                <span>Cursor Mode</span>
+                                <strong>Alt / Esc</strong>
+                            </li>
+                        </ul>
                     </div>
+                )}
+
+                <button
+                    type="button"
+                    className="hud-parchment-btn hud-mode-pill"
+                    onClick={toggleInputMode}
+                    title="Toggle Camera Look / Cursor Mode (Alt)"
+                >
+                    <MousePointer size={13} />
+                    <span>
+                        {inputMode === 'camera' ? 'Camera Look' : 'Free Cursor'}
+                    </span>
+                </button>
+            </div>
+
+            {/* ================================================================
+                MODAL 1: MEMORY INSPECTION CARD
+               ================================================================ */}
+            {activeModal === 'memory' && activeMemory && (
+                <div
+                    className="hud-modal-backdrop"
+                    data-ui-interactive="true"
+                    onClick={closeMemory}
+                >
+                    <article
+                        className="hud-modal-card hud-memory-card"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <header className="hud-modal-header">
+                            <div>
+                                <span className="hud-modal-kicker">
+                                    {activeMemory.category.toUpperCase()} ·{' '}
+                                    {activeMemory.date}
+                                </span>
+                                <h2 className="hud-modal-title">
+                                    {activeMemory.title}
+                                </h2>
+                                <p className="hud-modal-subtitle">
+                                    <MapPin size={13} />
+                                    <span>{activeMemory.location}</span>
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                className="hud-parchment-btn hud-parchment-btn--icon"
+                                onClick={closeMemory}
+                                aria-label="Close memory"
+                            >
+                                <X size={16} />
+                            </button>
+                        </header>
+
+                        <div className="hud-memory-body">
+                            <p className="hud-memory-description">
+                                {activeMemory.description}
+                            </p>
+
+                            {activeMemory.echo?.writtenNote && (
+                                <blockquote className="hud-memory-quote">
+                                    “{activeMemory.echo.writtenNote}”
+                                </blockquote>
+                            )}
+
+                            {activeMemory.tags && activeMemory.tags.length > 0 && (
+                                <div className="hud-tag-row">
+                                    {activeMemory.tags.map((tag) => (
+                                        <span key={tag} className="hud-tag-chip">
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <footer className="hud-modal-footer">
+                            <span className="hud-growth-badge">
+                                <Flower2 size={14} />
+                                <span>
+                                    Stage: {activeMemory.growthStage || 'seed'}
+                                </span>
+                            </span>
+
+                            <div className="hud-modal-actions">
+                                <button
+                                    type="button"
+                                    className="hud-parchment-btn"
+                                    onClick={() =>
+                                        advanceMemoryGrowth(activeMemory.id)
+                                    }
+                                >
+                                    <Flower2 size={14} />
+                                    <span>Nurture Memory</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    className="hud-parchment-btn hud-parchment-btn--primary"
+                                    onClick={closeMemory}
+                                >
+                                    <span>Return to Garden</span>
+                                </button>
+                            </div>
+                        </footer>
+                    </article>
+                </div>
+            )}
+
+            {/* ================================================================
+                MODAL 2: MEMORY CHRONICLE (JOURNAL)
+               ================================================================ */}
+            {activeModal === 'journal' && (
+                <div
+                    className="hud-modal-backdrop"
+                    data-ui-interactive="true"
+                    onClick={() => setActiveModal('none')}
+                >
+                    <section
+                        className="hud-modal-card hud-journal-card"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <header className="hud-modal-header">
+                            <div>
+                                <span className="hud-modal-kicker">
+                                    Sanctuary Archive
+                                </span>
+                                <h2 className="hud-modal-title">
+                                    Keepsake Chronicle
+                                </h2>
+                            </div>
+                            <button
+                                type="button"
+                                className="hud-parchment-btn hud-parchment-btn--icon"
+                                onClick={() => setActiveModal('none')}
+                                aria-label="Close chronicle"
+                            >
+                                <X size={16} />
+                            </button>
+                        </header>
+
+                        <div className="hud-journal-grid">
+                            {persistentMemories.map((mem) => {
+                                const isFound = discoveredIds.includes(mem.id);
+                                return (
+                                    <button
+                                        key={mem.id}
+                                        type="button"
+                                        className={`hud-journal-item ${
+                                            isFound
+                                                ? 'hud-journal-item--found'
+                                                : ''
+                                        }`}
+                                        onClick={() => openMemory(mem)}
+                                    >
+                                        <span className="hud-journal-meta">
+                                            {mem.date} · {mem.location}
+                                        </span>
+                                        <strong className="hud-journal-name">
+                                            {mem.title}
+                                        </strong>
+                                        <span className="hud-journal-sub">
+                                            {mem.subtitle}
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </section>
+                </div>
+            )}
+
+            {/* ================================================================
+                MODAL 3: PLANT NEW MEMORY
+               ================================================================ */}
+            {activeModal === 'createMemory' && (
+                <div
+                    className="hud-modal-backdrop"
+                    data-ui-interactive="true"
+                    onClick={() => setActiveModal('none')}
+                >
+                    <section
+                        className="hud-modal-card"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <header className="hud-modal-header">
+                            <div>
+                                <span className="hud-modal-kicker">
+                                    New Sanctuary Shrine
+                                </span>
+                                <h2 className="hud-modal-title">
+                                    Plant a Keepsake Memory
+                                </h2>
+                            </div>
+                            <button
+                                type="button"
+                                className="hud-parchment-btn hud-parchment-btn--icon"
+                                onClick={() => setActiveModal('none')}
+                                aria-label="Close form"
+                            >
+                                <X size={16} />
+                            </button>
+                        </header>
+
+                        <form
+                            className="hud-form"
+                            onSubmit={handlePlantMemory}
+                        >
+                            <label className="hud-field">
+                                <span>Memory Title</span>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="e.g., Golden Hour by the Old Bridge"
+                                    value={newTitle}
+                                    onChange={(e) =>
+                                        setNewTitle(e.target.value)
+                                    }
+                                />
+                            </label>
+
+                            <div className="hud-field-row">
+                                <label className="hud-field">
+                                    <span>Subtitle</span>
+                                    <input
+                                        type="text"
+                                        placeholder="Shared Moment"
+                                        value={newSubtitle}
+                                        onChange={(e) =>
+                                            setNewSubtitle(e.target.value)
+                                        }
+                                    />
+                                </label>
+                                <label className="hud-field">
+                                    <span>Location</span>
+                                    <input
+                                        type="text"
+                                        placeholder={biomeInfo.name}
+                                        value={newLocation}
+                                        onChange={(e) =>
+                                            setNewLocation(e.target.value)
+                                        }
+                                    />
+                                </label>
+                            </div>
+
+                            <div className="hud-field-row">
+                                <label className="hud-field">
+                                    <span>Category</span>
+                                    <select
+                                        value={newCategory}
+                                        onChange={(e) =>
+                                            setNewCategory(
+                                                e.target.value as MemoryCategory
+                                            )
+                                        }
+                                    >
+                                        <option value="photo">Photograph</option>
+                                        <option value="letter">Written Letter</option>
+                                        <option value="music">Melody</option>
+                                        <option value="voice">Voice Echo</option>
+                                        <option value="shrine">Sacred Shrine</option>
+                                    </select>
+                                </label>
+                                <label className="hud-field">
+                                    <span>Pedestal Style</span>
+                                    <select
+                                        value={newImportance}
+                                        onChange={(e) =>
+                                            setNewImportance(
+                                                e.target
+                                                    .value as MemoryImportance
+                                            )
+                                        }
+                                    >
+                                        <option value="cherished">
+                                            Minimal Stone Altar
+                                        </option>
+                                        <option value="milestone">
+                                            Arched Shrine
+                                        </option>
+                                        <option value="core">
+                                            Grand Monolith Portal
+                                        </option>
+                                    </select>
+                                </label>
+                            </div>
+
+                            <label className="hud-field">
+                                <span>Story / Reflection</span>
+                                <textarea
+                                    rows={3}
+                                    placeholder="Describe the memory preserved here…"
+                                    value={newDescription}
+                                    onChange={(e) =>
+                                        setNewDescription(e.target.value)
+                                    }
+                                />
+                            </label>
+
+                            <footer className="hud-modal-footer">
+                                <button
+                                    type="button"
+                                    className="hud-parchment-btn"
+                                    onClick={() => setActiveModal('none')}
+                                >
+                                    <span>Cancel</span>
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="hud-parchment-btn hud-parchment-btn--primary"
+                                >
+                                    <Plus size={15} />
+                                    <span>Plant in Garden</span>
+                                </button>
+                            </footer>
+                        </form>
+                    </section>
+                </div>
+            )}
+
+            {/* ================================================================
+                MODAL 4: WORLD SEED & GRAPHICS QUALITY SETTINGS
+               ================================================================ */}
+            {activeModal === 'settings' && (
+                <div
+                    className="hud-modal-backdrop"
+                    data-ui-interactive="true"
+                    onClick={() => setActiveModal('none')}
+                >
+                    <section
+                        className="hud-modal-card"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <header className="hud-modal-header">
+                            <div>
+                                <span className="hud-modal-kicker">
+                                    Garden Configuration
+                                </span>
+                                <h2 className="hud-modal-title">
+                                    World Seed & Performance
+                                </h2>
+                            </div>
+                            <button
+                                type="button"
+                                className="hud-parchment-btn hud-parchment-btn--icon"
+                                onClick={() => setActiveModal('none')}
+                                aria-label="Close settings"
+                            >
+                                <X size={16} />
+                            </button>
+                        </header>
+
+                        <div className="hud-settings-content">
+                            <form
+                                className="hud-seed-row"
+                                onSubmit={handleApplySeed}
+                            >
+                                <label className="hud-field">
+                                    <span>Deterministic World Seed</span>
+                                    <input
+                                        type="text"
+                                        value={seedInput}
+                                        onChange={(e) =>
+                                            setSeedInput(e.target.value)
+                                        }
+                                    />
+                                </label>
+                                <div className="hud-seed-buttons">
+                                    <button
+                                        type="submit"
+                                        className="hud-parchment-btn"
+                                    >
+                                        <span>Apply</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="hud-parchment-btn"
+                                        onClick={() => {
+                                            const next = regenerateWorldSeed();
+                                            setSeedInput(next);
+                                        }}
+                                    >
+                                        <RefreshCw size={14} />
+                                        <span>New Seed</span>
+                                    </button>
+                                </div>
+                            </form>
+
+                            <div className="hud-quality-row">
+                                <div>
+                                    <strong className="hud-quality-label">
+                                        Rendering Quality Preset
+                                    </strong>
+                                    <p className="hud-quality-desc">
+                                        Adjusts shadow resolution and pixel density for smoother framerates.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="hud-parchment-btn hud-parchment-btn--primary"
+                                    onClick={toggleQuality}
+                                >
+                                    <span>
+                                        {quality === 'high'
+                                            ? 'High Fidelity'
+                                            : 'Performance'}
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             )}
         </div>

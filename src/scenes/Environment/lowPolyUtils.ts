@@ -1,10 +1,11 @@
 // src/scenes/Environment/lowPolyUtils.ts
 import * as THREE from 'three';
-import { THEME } from '../../styles/theme';
 
 export const CHUNK_SIZE = 40;
-export const CHUNK_SEGMENTS = 28;
-export const ACTIVE_CHUNK_RADIUS = 1; // 3x3 chunk grid = 120m x 120m active around player
+export const CHUNK_SEGMENTS = 18;
+// 5x5 chunk grid (200m x 200m) provides a naturally continuous world into the atmospheric fog
+// without needing any artificial player-following hill wall.
+export const ACTIVE_CHUNK_RADIUS = 2;
 
 export type BiomeType =
     | 'memory_sanctuary'
@@ -32,96 +33,92 @@ export interface BiomeMetadata {
 export const BIOME_CONFIGS: Record<BiomeType, BiomeMetadata> = {
     memory_sanctuary: {
         id: 'memory_sanctuary',
-        name: 'Memory Sanctuary',
-        subtitle: 'Sacred Threshold of Shared Echoes',
-        baseColor: THEME.colors.meadowBase,
-        sunlitColor: THEME.colors.meadowSunlit,
-        shadowColor: THEME.colors.meadowShadow,
-        pathColor: '#8d8266',
-        treeDensity: 0.42,
-        rockDensity: 0.35,
-        flowerDensity: 0.85,
-        elevationScale: 0.65,
-        roughnessScale: 0.5,
+        name: 'Keepsake Village',
+        subtitle: 'Welcoming Homestead & Memory Square',
+        baseColor: '#5d7c52',
+        sunlitColor: '#7d9c64',
+        shadowColor: '#3f593b',
+        pathColor: '#b59f84',
+        treeDensity: 0.38,
+        rockDensity: 0.28,
+        flowerDensity: 0.78,
+        elevationScale: 0.45,
+        roughnessScale: 0.35,
     },
     blossom_grove: {
         id: 'blossom_grove',
-        name: 'Blossom Grove',
-        subtitle: 'Sunlit Sakura Hills & Memory Petals',
-        baseColor: '#737a52',
-        sunlitColor: '#9ca16b',
-        shadowColor: '#525c3e',
-        pathColor: '#917f6c',
-        treeDensity: 0.68,
-        rockDensity: 0.3,
-        flowerDensity: 0.95,
-        elevationScale: 0.95,
-        roughnessScale: 0.7,
+        name: 'Sakura Grove',
+        subtitle: 'Blossom Trees, Lotus Ponds & Torii Shrines',
+        baseColor: '#697f54',
+        sunlitColor: '#8fa16a',
+        shadowColor: '#485c3d',
+        pathColor: '#baa096',
+        treeDensity: 0.62,
+        rockDensity: 0.34,
+        flowerDensity: 0.9,
+        elevationScale: 0.78,
+        roughnessScale: 0.52,
     },
     evergreen_forest: {
         id: 'evergreen_forest',
-        name: 'Evergreen Forest',
-        subtitle: 'Ancient Whispering Pines & Mossy Stones',
-        baseColor: '#4e6342',
-        sunlitColor: '#6d8256',
-        shadowColor: '#35472d',
-        pathColor: '#6e6854',
-        treeDensity: 0.88,
-        rockDensity: 0.65,
-        flowerDensity: 0.35,
-        elevationScale: 1.35,
-        roughnessScale: 1.15,
+        name: 'Ancient Forest',
+        subtitle: 'Towering Elder Trees & Mossy Monoliths',
+        baseColor: '#436343',
+        sunlitColor: '#618257',
+        shadowColor: '#2c452e',
+        pathColor: '#8c7e6a',
+        treeDensity: 0.8,
+        rockDensity: 0.64,
+        flowerDensity: 0.45,
+        elevationScale: 1.1,
+        roughnessScale: 0.88,
     },
     meadow: {
         id: 'meadow',
-        name: 'Golden Meadow',
-        subtitle: 'Open Rolling Pastures & Wildflower Breeze',
-        baseColor: '#768252',
-        sunlitColor: '#a3ab6c',
-        shadowColor: '#55613c',
-        pathColor: '#8a8262',
-        treeDensity: 0.22,
-        rockDensity: 0.2,
-        flowerDensity: 1.0,
-        elevationScale: 0.75,
-        roughnessScale: 0.45,
+        name: 'Riverside / Pondlands',
+        subtitle: 'Crystal Waters, Flower Banks & Open Glades',
+        baseColor: '#628558',
+        sunlitColor: '#86a86e',
+        shadowColor: '#43613e',
+        pathColor: '#b5a68b',
+        treeDensity: 0.34,
+        rockDensity: 0.45,
+        flowerDensity: 0.95,
+        elevationScale: 0.54,
+        roughnessScale: 0.38,
     },
     ancient_ruins: {
         id: 'ancient_ruins',
-        name: 'Ancient Ruins',
-        subtitle: 'Weathered Monoliths & Forgotten Archways',
-        baseColor: '#6c7056',
-        sunlitColor: '#8f9172',
-        shadowColor: '#4c4f3d',
-        pathColor: '#857d73',
-        treeDensity: 0.36,
-        rockDensity: 0.92,
-        flowerDensity: 0.45,
-        elevationScale: 1.15,
-        roughnessScale: 1.05,
+        name: 'Ruins of Memory',
+        subtitle: 'Carved Stone Arches & Ancient Pillars',
+        baseColor: '#5c6b57',
+        sunlitColor: '#7c8a6d',
+        shadowColor: '#3f4a3d',
+        pathColor: '#96938e',
+        treeDensity: 0.4,
+        rockDensity: 0.82,
+        flowerDensity: 0.52,
+        elevationScale: 0.98,
+        roughnessScale: 0.82,
     },
     explorers_rest: {
         id: 'explorers_rest',
-        name: "Explorer's Rest",
-        subtitle: 'Quiet Wayside Haven & Lantern Camp',
-        baseColor: '#6d784f',
-        sunlitColor: '#919966',
-        shadowColor: '#4d5739',
-        pathColor: '#8c7b60',
-        treeDensity: 0.45,
-        rockDensity: 0.42,
-        flowerDensity: 0.65,
-        elevationScale: 0.55,
-        roughnessScale: 0.4,
+        name: 'Woodland Campsite',
+        subtitle: 'Traveler Tents, Cargo Carts & Lantern Trails',
+        baseColor: '#657a4e',
+        sunlitColor: '#889964',
+        shadowColor: '#465738',
+        pathColor: '#ad9474',
+        treeDensity: 0.5,
+        rockDensity: 0.44,
+        flowerDensity: 0.7,
+        elevationScale: 0.64,
+        roughnessScale: 0.44,
     },
 };
 
 const SEED_STORAGE_KEY = 'keepsake_world_seed_v1';
-const DEFAULT_WORLD_SEED = 'KEEPSAKE-2026';
 
-/**
- * Hashes an arbitrary string seed into a deterministic 32-bit unsigned integer.
- */
 export function hashSeedString(seedStr: string): number {
     let h = 2166136261 >>> 0;
     for (let i = 0; i < seedStr.length; i++) {
@@ -131,21 +128,82 @@ export function hashSeedString(seedStr: string): number {
     return h >>> 0;
 }
 
-// Module-level active seed state synchronized with Zustand & localStorage
-let currentSeedString: string = (() => {
+export function generateNewSeedString(): string {
+    const adjectives = [
+        'SAKURA',
+        'EMERALD',
+        'STARLIGHT',
+        'WHISPER',
+        'LANTERN',
+        'CRYSTAL',
+        'SOLSTICE',
+        'AZURE',
+        'SERENE',
+        'BLOOM',
+        'ECHO',
+        'WILLOW',
+        'LOTUS',
+        'AURORA',
+        'VERDANT',
+        'SYLVAN',
+    ];
+    const nouns = [
+        'VILLAGE',
+        'GROVE',
+        'FOREST',
+        'PONDLAND',
+        'GLADE',
+        'SANCTUARY',
+        'HORIZON',
+        'ARCHWAY',
+        'GARDEN',
+        'VALLEY',
+        'HAVEN',
+        'SHORE',
+    ];
+
+    let entropyA = Date.now() ^ Math.floor(Math.random() * 0xffffffff);
+    let entropyB = Math.floor(Math.random() * 0xffffffff);
+    if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+        const buf = new Uint32Array(2);
+        window.crypto.getRandomValues(buf);
+        entropyA ^= buf[0];
+        entropyB ^= buf[1];
+    }
+
+    const r1 = Math.abs(entropyA) % adjectives.length;
+    const r2 = Math.abs(entropyB) % nouns.length;
+    const num = (Math.abs(entropyA ^ entropyB) % 9000) + 1000;
+    return `${adjectives[r1]}-${nouns[r2]}-${num}`;
+}
+
+function isValidSeedString(candidate: unknown): candidate is string {
+    if (typeof candidate !== 'string') return false;
+    const trimmed = candidate.trim();
+    return trimmed.length >= 3 && trimmed.length <= 48 && /^[A-Z0-9_-]+$/i.test(trimmed);
+}
+
+function loadOrCreatePersistentDeviceSeed(): string {
     if (typeof window !== 'undefined') {
         try {
             const saved = window.localStorage.getItem(SEED_STORAGE_KEY);
-            if (saved && saved.trim().length > 0) {
+            if (
+                isValidSeedString(saved) &&
+                saved.trim().toUpperCase() !== 'KEEPSAKE-2026'
+            ) {
                 return saved.trim().toUpperCase();
             }
+            const freshDeviceSeed = generateNewSeedString();
+            window.localStorage.setItem(SEED_STORAGE_KEY, freshDeviceSeed);
+            return freshDeviceSeed;
         } catch {
-            // Ignore storage errors
+            // Fallback if localStorage is blocked
         }
     }
-    return DEFAULT_WORLD_SEED;
-})();
+    return generateNewSeedString();
+}
 
+let currentSeedString: string = loadOrCreatePersistentDeviceSeed();
 let currentSeedNumeric: number = hashSeedString(currentSeedString);
 
 export function getWorldSeed(): string {
@@ -157,7 +215,9 @@ export function getWorldSeedNumeric(): number {
 }
 
 export function setWorldSeedGlobal(newSeed: string): string {
-    const sanitized = (newSeed || DEFAULT_WORLD_SEED).trim().toUpperCase();
+    const sanitized = isValidSeedString(newSeed)
+        ? newSeed.trim().toUpperCase()
+        : generateNewSeedString();
     currentSeedString = sanitized;
     currentSeedNumeric = hashSeedString(sanitized);
     if (typeof window !== 'undefined') {
@@ -170,43 +230,6 @@ export function setWorldSeedGlobal(newSeed: string): string {
     return sanitized;
 }
 
-export function generateNewSeedString(): string {
-    const adjectives = [
-        'GOLDEN',
-        'SAKURA',
-        'WHISPER',
-        'AUTUMN',
-        'LANTERN',
-        'VELVET',
-        'SOLSTICE',
-        'MISTY',
-        'SERENE',
-        'AMBER',
-        'ECHO',
-        'WILLOW',
-    ];
-    const nouns = [
-        'VALLEY',
-        'GROVE',
-        'HAVEN',
-        'MEADOW',
-        'GLADE',
-        'SANCTUARY',
-        'HORIZON',
-        'ARCHWAY',
-        'GARDEN',
-        'RIDGE',
-    ];
-    const nowEntropy = Date.now() ^ (Math.random() * 0xffffffff);
-    const r1 = Math.abs(Math.imul(nowEntropy, 1597334677)) % adjectives.length;
-    const r2 = Math.abs(Math.imul(nowEntropy ^ 0x5bd1e995, 3812015801)) % nouns.length;
-    const num = (Math.abs(nowEntropy) % 900) + 100;
-    return `${adjectives[r1]}-${nouns[r2]}-${num}`;
-}
-
-/**
- * Mulberry32 deterministic PRNG returning [0, 1)
- */
 export function mulberry32(a: number): number {
     let t = (a + 0x6d2b79f5) | 0;
     t = Math.imul(t ^ (t >>> 15), t | 1);
@@ -214,20 +237,20 @@ export function mulberry32(a: number): number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
-/**
- * Deterministic seeded random function incorporating the active world seed.
- */
 export function seededRandom(seed: number): number {
     const intSeed = Math.floor(seed * 1000003) ^ currentSeedNumeric;
     return mulberry32(intSeed);
 }
 
-/**
- * Deterministic 2D spatial hash incorporating the active world seed.
- * Completely independent of chunk loading order.
- */
 export function hash2D(ix: number, iz: number, salt = 0): number {
     let h = currentSeedNumeric ^ Math.imul(Math.floor(salt), 374761393);
+    h = Math.imul(h ^ Math.imul(Math.floor(ix), 3266489917), 668265263);
+    h = Math.imul(h ^ Math.imul(Math.floor(iz), 2246822519), 3266489917);
+    return mulberry32(h);
+}
+
+function villageFixedHash2D(ix: number, iz: number, salt = 0): number {
+    let h = 0x5f3759df ^ Math.imul(Math.floor(salt), 374761393);
     h = Math.imul(h ^ Math.imul(Math.floor(ix), 3266489917), 668265263);
     h = Math.imul(h ^ Math.imul(Math.floor(iz), 2246822519), 3266489917);
     return mulberry32(h);
@@ -238,9 +261,6 @@ export function smoothstep(x: number, min: number, max: number): number {
     return t * t * (3 - 2 * t);
 }
 
-/**
- * Continuous 2D Value Noise for seamless cross-chunk terrain generation
- */
 export function valueNoise2D(x: number, z: number, salt = 0): number {
     const ix = Math.floor(x);
     const iz = Math.floor(z);
@@ -258,9 +278,23 @@ export function valueNoise2D(x: number, z: number, salt = 0): number {
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
 
-/**
- * Multi-octave Fractal Brownian Motion (fBM)
- */
+function fixedVillageNoise2D(x: number, z: number, salt = 0): number {
+    const ix = Math.floor(x);
+    const iz = Math.floor(z);
+    const fx = x - ix;
+    const fz = z - iz;
+
+    const u = fx * fx * (3 - 2 * fx);
+    const v = fz * fz * (3 - 2 * fz);
+
+    const a = villageFixedHash2D(ix, iz, salt);
+    const b = villageFixedHash2D(ix + 1, iz, salt);
+    const c = villageFixedHash2D(ix, iz + 1, salt);
+    const d = villageFixedHash2D(ix + 1, iz + 1, salt);
+
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
 export function fbm2D(x: number, z: number, octaves = 3, salt = 0): number {
     let value = 0;
     let amplitude = 0.5;
@@ -275,42 +309,35 @@ export function fbm2D(x: number, z: number, octaves = 3, salt = 0): number {
     return value;
 }
 
-/**
- * Returns the exact X-center of the primary North-South meandering trail for any Z coordinate.
- * Uses the active seed while keeping (0, 7.5) player spawn near the trailhead.
- */
 export function getPathCenterX(z: number): number {
+    const villageFixedPath = Math.sin(z * 0.045) * 1.4 - 0.4;
+    const villageExitBlend = smoothstep(Math.abs(z), 22, 42);
+    if (villageExitBlend <= 0.001) return villageFixedPath;
+
     const phase1 = (currentSeedNumeric & 0xff) * 0.024;
     const phase2 = ((currentSeedNumeric >> 8) & 0xff) * 0.024;
-    const rawOffset =
-        Math.sin(z * 0.055 + phase1) * 3.8 +
-        Math.cos(z * 0.028 + phase2) * 2.1;
-    const spawnOffset =
-        Math.sin(7.5 * 0.055 + phase1) * 3.8 +
-        Math.cos(7.5 * 0.028 + phase2) * 2.1;
-    // Anchor trail near X = 0 at player spawn Z = 7.5
-    const originTaper = smoothstep(Math.abs(z - 7.5), 0, 22);
-    return (rawOffset - spawnOffset * (1 - originTaper * 0.65)) - 0.4;
+    const seededOffset =
+        Math.sin(z * 0.052 + phase1) * 4.2 +
+        Math.cos(z * 0.027 + phase2) * 2.4;
+
+    return THREE.MathUtils.lerp(villageFixedPath, seededOffset, villageExitBlend);
 }
 
-/**
- * Returns the exact Z-center of the secondary East-West cross-trail for any X coordinate.
- */
 export function getSecondaryPathCenterZ(x: number): number {
+    const villageFixedCross = Math.sin(x * 0.04) * 1.2 - 3.5;
+    const villageExitBlend = smoothstep(Math.abs(x), 22, 42);
+    if (villageExitBlend <= 0.001) return villageFixedCross;
+
     const phase1 = ((currentSeedNumeric >> 4) & 0xff) * 0.024;
     const phase2 = ((currentSeedNumeric >> 12) & 0xff) * 0.024;
-    const rawOffset =
-        Math.sin(x * 0.05 + phase1) * 3.4 +
-        Math.cos(x * 0.025 + phase2) * 1.9;
-    const originValue =
-        Math.sin(phase1) * 3.4 + Math.cos(phase2) * 1.9;
-    const originTaper = smoothstep(Math.abs(x), 0, 20);
-    return rawOffset - originValue * (1 - originTaper * 0.7) - 3.5;
+    const seededOffset =
+        Math.sin(x * 0.048 + phase1) * 3.8 +
+        Math.cos(x * 0.025 + phase2) * 2.1 -
+        3.5;
+
+    return THREE.MathUtils.lerp(villageFixedCross, seededOffset, villageExitBlend);
 }
 
-/**
- * Returns the minimum distance from (x, z) to any winding path in the world.
- */
 export function getDistanceToNearestPath(x: number, z: number): number {
     const dMain = Math.abs(x - getPathCenterX(z));
     const dCross = Math.abs(z - getSecondaryPathCenterZ(x));
@@ -328,35 +355,27 @@ const OUTER_BIOME_POOL: BiomeType[] = [
 export interface BiomeSample {
     primary: BiomeType;
     secondary: BiomeType;
-    blend: number; // 0 = 100% primary, 0.5 = equal boundary
+    blend: number;
     config: BiomeMetadata;
-    clearingFactor: number; // [0..1] 1 = inside an intentional landmark clearing
+    clearingFactor: number;
     ClearingCenter: [number, number];
 }
 
-/**
- * Deterministic Voronoi + Domain-Warped Biome Resolver.
- * Guarantees:
- * - Origin radius < 26m is always 'memory_sanctuary'
- * - Neighboring regions form coherent 65m-90m biome territories with smooth transitions
- * - Every biome cell has a deterministic clearing center for intentional landmark placement
- */
 export function getBiomeSampleAt(x: number, z: number): BiomeSample {
     const distFromOrigin = Math.hypot(x, z);
-    if (distFromOrigin < 22) {
+    if (distFromOrigin < 24) {
         return {
             primary: 'memory_sanctuary',
             secondary: 'blossom_grove',
             blend: 0,
             config: BIOME_CONFIGS.memory_sanctuary,
-            clearingFactor: smoothstep(distFromOrigin, 16, 6),
+            clearingFactor: smoothstep(distFromOrigin, 20, 8),
             ClearingCenter: [0, 0],
         };
     }
 
-    // Domain warp coordinates slightly so biome borders feel organic, not grid-like
-    const warpX = x + fbm2D(x * 0.015, z * 0.015, 2, 401) * 14.0;
-    const warpZ = z + fbm2D(x * 0.015, z * 0.015, 2, 509) * 14.0;
+    const warpX = x + fbm2D(x * 0.013, z * 0.013, 2, 401) * 16.0;
+    const warpZ = z + fbm2D(x * 0.013, z * 0.013, 2, 509) * 16.0;
 
     const cellScale = 68.0;
     const cx = Math.floor(warpX / cellScale);
@@ -397,21 +416,19 @@ export function getBiomeSampleAt(x: number, z: number): BiomeSample {
     }
 
     const resolveCellBiome = (cellX: number, cellZ: number): BiomeType => {
-        if (cellX === 0 && cellZ === 0) return 'memory_sanctuary';
         const h = Math.floor(hash2D(cellX, cellZ, 907) * 1000);
-        // Ensure adjacent cells vary naturally
-        const idx = Math.abs(h + cellX * 3 + cellZ * 5) % OUTER_BIOME_POOL.length;
+        const idx =
+            Math.abs(h + cellX * 7 + cellZ * 13) % OUTER_BIOME_POOL.length;
         return OUTER_BIOME_POOL[idx];
     };
 
     let primary = resolveCellBiome(bestCellX, bestCellZ);
     let secondary = resolveCellBiome(secondCellX, secondCellZ);
 
-    // Smoothly transition out of the central Memory Sanctuary between 22m and 34m
-    if (distFromOrigin < 34 && primary !== 'memory_sanctuary') {
+    if (distFromOrigin < 48 && primary !== 'memory_sanctuary') {
         secondary = primary;
         primary = 'memory_sanctuary';
-        const sanctBlend = smoothstep(distFromOrigin, 22, 34);
+        const sanctBlend = smoothstep(distFromOrigin, 24, 48);
         const rawClearDist = Math.hypot(x - bestPointX, z - bestPointZ);
         return {
             primary,
@@ -423,10 +440,11 @@ export function getBiomeSampleAt(x: number, z: number): BiomeSample {
         };
     }
 
+    // Wider 36m transition zone ensures biome height and color blend gradually with zero ridges
     const edgeDelta = Math.max(0.001, minDist2 - minDist1);
-    const blend = 1.0 - smoothstep(edgeDelta, 0, 18.0);
+    const blend = 1.0 - smoothstep(edgeDelta, 0, 36.0);
     const rawClearDist = Math.hypot(x - bestPointX, z - bestPointZ);
-    const clearingFactor = 1.0 - smoothstep(rawClearDist, 5.5, 14.5);
+    const clearingFactor = 1.0 - smoothstep(rawClearDist, 6.0, 15.0);
 
     return {
         primary,
@@ -442,21 +460,22 @@ export function getBiomeAt(x: number, z: number): BiomeType {
     return getBiomeSampleAt(x, z).primary;
 }
 
-/**
- * Seamless World-Space Terrain Height Function.
- * Driven deterministically by the active world seed and smooth biome blending.
- */
 export function getGardenTerrainHeight(x: number, z: number): number {
     const distFromPath = getDistanceToNearestPath(x, z);
+    const pathFlatten = smoothstep(distFromPath, 1.6, 6.8);
 
-    // Smooth flat-bottomed walking valley along the winding trails
-    const pathFlatten = smoothstep(distFromPath, 1.5, 7.2);
-
-    // Sanctuary Basin near origin so the hero landmarks & spawn sit naturally
     const distFromOrigin = Math.hypot(x, z);
-    const sanctuaryBlend = smoothstep(distFromOrigin, 14, 38);
+    const outerSeedBlend = smoothstep(distFromOrigin, 22, 42);
 
-    // Biome-modulated elevation & roughness
+    const villageHills =
+        (fixedVillageNoise2D(x * 0.025, z * 0.025, 11) - 0.5) * 1.15 *
+        smoothstep(distFromOrigin, 10, 26);
+    const villageHeight = villageHills * pathFlatten + (1 - pathFlatten) * -0.14 - 0.35;
+
+    if (outerSeedBlend <= 0.001) {
+        return villageHeight;
+    }
+
     const sample = getBiomeSampleAt(x, z);
     const cfgA = BIOME_CONFIGS[sample.primary];
     const cfgB = BIOME_CONFIGS[sample.secondary];
@@ -471,74 +490,43 @@ export function getGardenTerrainHeight(x: number, z: number): number {
         sample.blend
     );
 
-    // Flatten natural clearings so cottages, pedestals, and campsites sit level
-    const clearingFlatten = 1.0 - sample.clearingFactor * 0.68;
+    const clearingFlatten = 1.0 - sample.clearingFactor * 0.72;
 
-    // Curated hero knolls near origin (Left archway ridge & Right sakura knoll)
-    const leftArchHill =
-        x < -3.5
-            ? smoothstep(Math.abs(x + 3.5), 0, 18) *
-            1.75 *
-            (1 - sanctuaryBlend * 0.55)
-            : 0;
-    const rightSakuraKnoll =
-        x > 3.5
-            ? smoothstep(x - 3.5, 0, 16) *
-            1.95 *
-            (1 - sanctuaryBlend * 0.55)
-            : 0;
-
-    // Seeded multi-scale rolling hills, scenic ridges & valleys
     const macroHills =
-        fbm2D(x * 0.015, z * 0.015, 3, 101) * 4.8 * elevScale;
+        fbm2D(x * 0.014, z * 0.014, 3, 101) * 4.1 * elevScale;
     const mesoSlopes =
-        fbm2D(x * 0.048 + 11.3, z * 0.048 - 7.9, 2, 202) * 1.25 * roughScale;
+        fbm2D(x * 0.044 + 11.3, z * 0.044 - 7.9, 2, 202) * 1.0 * roughScale;
     const scenicOutcrop =
         sample.primary === 'ancient_ruins' || sample.primary === 'evergreen_forest'
-            ? Math.max(0, valueNoise2D(x * 0.035, z * 0.035, 309) - 0.58) * 3.6
+            ? Math.max(0, valueNoise2D(x * 0.032, z * 0.032, 309) - 0.6) * 2.4
             : 0;
-    const microUndulation = Math.sin(x * 0.17 + z * 0.14) * 0.09;
+    const microUndulation = Math.sin(x * 0.16 + z * 0.14) * 0.06;
 
-    const rawElevation =
-        ((macroHills * (0.28 + 0.72 * sanctuaryBlend) +
-            mesoSlopes * (0.35 + 0.65 * sanctuaryBlend) +
-            scenicOutcrop * sanctuaryBlend) *
-            clearingFlatten +
-            leftArchHill +
-            rightSakuraKnoll +
-            microUndulation) *
-        pathFlatten;
+    const seededElevation =
+        (macroHills + mesoSlopes + scenicOutcrop) * clearingFlatten * pathFlatten +
+        microUndulation * pathFlatten +
+        (1 - pathFlatten) * -0.14 -
+        0.35;
 
-    // Slight path channel depression so flagstones sit nestled in the terrain
-    const pathChannel = (1 - pathFlatten) * -0.16;
-
-    return rawElevation + pathChannel - 0.35;
+    return THREE.MathUtils.lerp(villageHeight, seededElevation, outerSeedBlend);
 }
 
-/**
- * Computes terrain surface normal via finite differences for slope handling
- */
-export function getGardenTerrainNormal(x: number, z: number): THREE.Vector3 {
+const _sharedNormal = new THREE.Vector3();
+
+export function getGardenTerrainNormal(x: number, z: number, target = _sharedNormal): THREE.Vector3 {
     const eps = 0.25;
     const hL = getGardenTerrainHeight(x - eps, z);
     const hR = getGardenTerrainHeight(x + eps, z);
     const hD = getGardenTerrainHeight(x, z - eps);
     const hU = getGardenTerrainHeight(x, z + eps);
-    return new THREE.Vector3(hL - hR, 2 * eps, hD - hU).normalize();
+    return target.set(hL - hR, 2 * eps, hD - hU).normalize();
 }
 
-/**
- * Computes maximum terrain slope angle (0 = flat, 1 = vertical) at (x, z)
- */
 export function getTerrainSlope(x: number, z: number): number {
     const normal = getGardenTerrainNormal(x, z);
     return Math.max(0, 1.0 - normal.y);
 }
 
-/**
- * Creates an artistically faceted low-poly mesh with welded vertices
- * and intentional flat-shaded facets.
- */
 export function createSculptedFacetedGeometry(
     radius: number,
     detail: number,
@@ -549,6 +537,7 @@ export function createSculptedFacetedGeometry(
 ): THREE.BufferGeometry {
     const baseGeo = new THREE.IcosahedronGeometry(radius, detail);
     const geo = baseGeo.toNonIndexed();
+    baseGeo.dispose();
     const pos = geo.attributes.position;
 
     const vertexMap = new Map<string, [number, number, number]>();
@@ -563,7 +552,6 @@ export function createSculptedFacetedGeometry(
         if (!displaced) {
             const hash =
                 vx * 19.19 + vy * 37.37 + vz * 73.73 + seedOffset * 13.37;
-            // Geometry shapes stay artistically consistent across seeds
             const detRand = (s: number) => {
                 const x = Math.sin(s * 127.1 + 311.7) * 43758.5453123;
                 return x - Math.floor(x);

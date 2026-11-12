@@ -1,0 +1,120 @@
+/* src/components/UI/MobileJoystick.css */
+
+.ks-joystick-zone {
+  position: fixed;
+  left: max(22px, env(safe-area-inset-left, 22px));
+  bottom: max(24px, env(safe-area-inset-bottom, 24px));
+  z-index: 48;
+  width: 128px;
+  height: 128px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  pointer-events: auto;
+  transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Almost transparent when idle so it never obstructs the 3D garden */
+.ks-joystick-zone--idle {
+  opacity: 0.22;
+}
+
+/* Smoothly fades into clear visibility while touched or dragged */
+.ks-joystick-zone--active {
+  opacity: 0.94;
+}
+
+.ks-joystick-base {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 45%,
+    rgba(247, 238, 223, 0.58) 0%,
+    rgba(229, 211, 186, 0.72) 72%,
+    rgba(204, 181, 152, 0.82) 100%
+  );
+  border: 1.5px solid rgba(186, 158, 124, 0.85);
+  box-shadow:
+    0 8px 24px rgba(34, 24, 18, 0.22),
+    0 1px 0 rgba(255, 251, 244, 0.75) inset;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ks-joystick-ring {
+  position: absolute;
+  inset: 10px;
+  border-radius: 50%;
+  border: 1px dashed rgba(138, 112, 86, 0.38);
+  pointer-events: none;
+}
+
+.ks-joystick-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: linear-gradient(
+    180deg,
+    #fbf3e6 0%,
+    #e5cfb0 100%
+  );
+  border: 1.5px solid #b5946d;
+  box-shadow:
+    0 4px 12px rgba(42, 29, 20, 0.28),
+    0 1.5px 0 rgba(255, 253, 248, 0.9) inset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease;
+  pointer-events: none;
+}
+
+/* Remove transform transition while dragging for zero-latency responsiveness */
+.ks-joystick-thumb--dragging {
+  transition: box-shadow 0.2s ease;
+  box-shadow:
+    0 6px 16px rgba(42, 29, 20, 0.34),
+    0 0 14px rgba(255, 212, 134, 0.45),
+    0 1.5px 0 rgba(255, 253, 248, 0.95) inset;
+}
+
+.ks-joystick-thumb-core {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #d4a359 0%,
+    #9e7339 100%
+  );
+  opacity: 0.78;
+}
+
+@media (max-width: 480px) {
+  .ks-joystick-zone {
+    left: max(16px, env(safe-area-inset-left, 16px));
+    bottom: max(18px, env(safe-area-inset-bottom, 18px));
+    width: 114px;
+    height: 114px;
+  }
+
+  .ks-joystick-base {
+    width: 100px;
+    height: 100px;
+  }
+
+  .ks-joystick-thumb {
+    width: 42px;
+    height: 42px;
+  }
+}

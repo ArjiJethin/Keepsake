@@ -78,7 +78,7 @@ export const GardenScene: React.FC = () => {
                 gl={{
                     antialias: quality === 'high',
                     toneMapping: THREE.ACESFilmicToneMapping,
-                    toneMappingExposure: 1.06,
+                    toneMappingExposure: 1.0,
                     powerPreference: 'high-performance',
                 }}
             >
@@ -91,3 +91,4 @@ export const GardenScene: React.FC = () => {
         </div>
     );
 };
+

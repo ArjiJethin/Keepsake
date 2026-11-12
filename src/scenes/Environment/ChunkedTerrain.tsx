@@ -5,6 +5,7 @@ import React, {
     useLayoutEffect,
     useMemo,
     useRef,
+    useState,
 } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -19,11 +20,11 @@ import {
     getBiomeSampleAt,
     getDistanceToNearestPath,
     getGardenTerrainHeight,
+    getGardenTerrainNormal,
     getPathCenterX,
     getSecondaryPathCenterZ,
     getTerrainSlope,
     hash2D,
-    seededRandom,
 } from './lowPolyUtils';
 import { playerTelemetry, useGameStore } from '../../store/useGameStore';
 import {
@@ -34,18 +35,11 @@ import { isInsideSanctuaryClearing } from './sanctuaryLayout';
 import { GLB_ASSET_PATHS } from '../../components/Environment/GLBWorldAssets';
 import { InstancedGLBField } from '../../components/Environment/InstancedGLBField';
 import {
-    CozyStorybookCottage,
-    ExplorerCampsite,
-    MemoryFlowerGLB,
     MonumentalBlossomTreeGLB,
     MonumentalEvergreenTreeGLB,
     RedToriiGate,
-    SpottedMushroomCluster,
-    StandingStonePillar,
     StoneArchwayGLB,
-    WoodenCargoCart,
-    WoodenLanternPost,
-    WoodenMemoryNoticeboard,
+    WoodenArchedBridge,
 } from '../../components/Environment/WorldAssetLibrary';
 
 const SHARED_GEOMETRIES = {
@@ -55,20 +49,16 @@ const SHARED_GEOMETRIES = {
     pineTier3: new THREE.ConeGeometry(0.72, 1.35, 7),
     canopyMain: createSculptedFacetedGeometry(1.35, 1, [1.15, 0.9, 1.1], 0.16, 12),
     canopySub: createSculptedFacetedGeometry(0.95, 1, [1.1, 0.85, 1.05], 0.18, 29),
-    shrubGeo: createSculptedFacetedGeometry(0.55, 1, [1.25, 0.85, 1.15], 0.18, 63),
     boulder: createSculptedFacetedGeometry(0.85, 1, [1.3, 0.82, 1.15], 0.22, 41, true),
     mossCap: createSculptedFacetedGeometry(0.72, 1, [1.25, 0.35, 1.08], 0.15, 52),
     fallenLog: new THREE.CylinderGeometry(0.22, 0.26, 2.6, 6),
     steppingStone: new THREE.CylinderGeometry(0.68, 0.78, 0.14, 7),
-    grassBlade: new THREE.ConeGeometry(0.08, 0.42, 4),
-    flowerHead: new THREE.CylinderGeometry(0.16, 0.08, 0.06, 5),
+    groundCloverMound: createSculptedFacetedGeometry(0.48, 1, [1.35, 0.36, 1.25], 0.14, 67, true),
+    meadowShrub: createSculptedFacetedGeometry(0.58, 1, [1.22, 0.78, 1.18], 0.15, 83, true),
+    meadowShrubLobe: createSculptedFacetedGeometry(0.42, 1, [1.15, 0.72, 1.12], 0.15, 97, true),
+    wildflowerBlossom: new THREE.DodecahedronGeometry(0.11, 0),
 };
 
-/**
- * Shared flat-shaded surface materials, deduped by colour + roughness. Using a
- * single material instance per palette entry (instead of one per mesh) keeps
- * material and shader-program churn low across the whole chunk grid.
- */
 const SURFACE_MATERIAL_CACHE = new Map<string, THREE.MeshStandardMaterial>();
 
 function surfaceMaterial(
@@ -86,6 +76,65 @@ function surfaceMaterial(
     });
     SURFACE_MATERIAL_CACHE.set(key, material);
     return material;
+}
+
+let sharedTerrainMaterialInstance: THREE.MeshStandardMaterial | null = null;
+function getSharedTerrainMaterial(): THREE.MeshStandardMaterial {
+    if (sharedTerrainMaterialInstance) return sharedTerrainMaterialInstance;
+
+    const mat = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.9,
+        metalness: 0.02,
+        flatShading: true,
+    });
+
+    mat.onBeforeCompile = (shader) => {
+        shader.uniforms.uMemoryCenter = {
+            value: new THREE.Vector3(0, 0, 0),
+        };
+        shader.uniforms.uRadianceRadius = { value: 7.5 };
+        shader.uniforms.uRadianceStrength = { value: 0.0 };
+
+        mat.userData.shader = shader;
+
+        shader.fragmentShader =
+            `
+        uniform vec3 uMemoryCenter;
+        uniform float uRadianceRadius;
+        uniform float uRadianceStrength;
+        varying vec3 vWorldPos;
+      ` + shader.fragmentShader;
+
+        shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <color_fragment>',
+            `
+        #include <color_fragment>
+        float memDist = distance(vWorldPos, uMemoryCenter);
+        float radianceFactor = clamp(1.0 - (memDist / uRadianceRadius), 0.0, 1.0);
+        radianceFactor = smoothstep(0.0, 1.0, radianceFactor) * uRadianceStrength;
+        
+        vec3 magicalGlow = vec3(1.12, 1.05, 0.88);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * magicalGlow + vec3(0.07, 0.06, 0.02), radianceFactor * 0.42);
+        `
+        );
+
+        shader.vertexShader =
+            `
+        varying vec3 vWorldPos;
+      ` + shader.vertexShader;
+
+        shader.vertexShader = shader.vertexShader.replace(
+            '#include <worldpos_vertex>',
+            `
+        #include <worldpos_vertex>
+        vWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        `
+        );
+    };
+
+    sharedTerrainMaterialInstance = mat;
+    return mat;
 }
 
 interface ChunkInstanceBatch {
@@ -139,9 +188,7 @@ function createBatchCollector(): BatchCollector {
     return { batches, push };
 }
 
-// Local offsets of every tree part relative to the tree's root transform
 const TREE_PART_OFFSETS = {
-    shrub: [0, 0.38, 0],
     trunk: [0, 1.0, 0],
     pineTier1: [0, 1.85, 0],
     pineTier2: [0, 2.85, 0],
@@ -157,6 +204,7 @@ const _instanceScale = new THREE.Vector3();
 const _instanceEuler = new THREE.Euler();
 const _instanceParentMatrix = new THREE.Matrix4();
 const _instancePartMatrix = new THREE.Matrix4();
+const _combinedMatrix = new THREE.Matrix4();
 
 function composeInstanceMatrix(
     x: number,
@@ -176,11 +224,6 @@ function composeInstanceMatrix(
     return target.compose(_instancePos, _instanceQuat, _instanceScale);
 }
 
-/**
- * Collapses a chunk's procedural trees into instanced batches grouped by
- * geometry + palette colour. Identical silhouettes and colours, but a handful
- * of draw calls per chunk instead of one mesh per branch.
- */
 function buildTreeBatches(trees: TreeData[]): ChunkInstanceBatch[] {
     if (trees.length === 0) return [];
     const collector = createBatchCollector();
@@ -208,24 +251,15 @@ function buildTreeBatches(trees: TreeData[]): ChunkInstanceBatch[] {
         ) => {
             const [ox, oy, oz] = TREE_PART_OFFSETS[part];
             _instancePartMatrix.makeTranslation(ox, oy, oz);
+            _combinedMatrix.multiplyMatrices(_instanceParentMatrix, _instancePartMatrix);
             collector.push(
                 part,
                 geometry,
                 color,
                 roughness,
-                _instanceParentMatrix.clone().multiply(_instancePartMatrix)
+                _combinedMatrix
             );
         };
-
-        if (tree.species === 'shrub') {
-            pushPart(
-                'shrub',
-                SHARED_GEOMETRIES.shrubGeo,
-                THEME.colors.meadowBase,
-                0.85
-            );
-            continue;
-        }
 
         pushPart('trunk', SHARED_GEOMETRIES.trunk, THEME.colors.barkBase, 0.9);
 
@@ -239,7 +273,7 @@ function buildTreeBatches(trees: TreeData[]): ChunkInstanceBatch[] {
             pushPart(
                 'pineTier2',
                 SHARED_GEOMETRIES.pineTier2,
-                THEME.colors.meadowBase,
+                THEME.colors.canopyOlive,
                 0.85
             );
             pushPart(
@@ -254,19 +288,19 @@ function buildTreeBatches(trees: TreeData[]): ChunkInstanceBatch[] {
                 'canopyMain',
                 SHARED_GEOMETRIES.canopyMain,
                 isSakura ? THEME.colors.sakuraMid : THEME.colors.meadowBase,
-                0.8
+                0.82
             );
             pushPart(
                 'canopySubLeft',
                 SHARED_GEOMETRIES.canopySub,
                 isSakura ? THEME.colors.sakuraLight : THEME.colors.meadowSunlit,
-                0.8
+                0.82
             );
             pushPart(
                 'canopySubRight',
                 SHARED_GEOMETRIES.canopySub,
                 isSakura ? THEME.colors.sakuraDeep : THEME.colors.canopyOlive,
-                0.8
+                0.82
             );
         }
     }
@@ -274,9 +308,6 @@ function buildTreeBatches(trees: TreeData[]): ChunkInstanceBatch[] {
     return Array.from(collector.batches.values());
 }
 
-/**
- * Same batching treatment for boulders, mossy rocks, logs and stepping stones.
- */
 function buildPropBatches(propsList: PropData[]): ChunkInstanceBatch[] {
     if (propsList.length === 0) return [];
     const collector = createBatchCollector();
@@ -296,31 +327,63 @@ function buildPropBatches(propsList: PropData[]): ChunkInstanceBatch[] {
             _instanceParentMatrix
         );
 
-        const geometry =
-            prop.type === 'rock' || prop.type === 'mossy_rock'
-                ? SHARED_GEOMETRIES.boulder
-                : prop.type === 'log'
-                    ? SHARED_GEOMETRIES.fallenLog
-                    : SHARED_GEOMETRIES.steppingStone;
+        let geometry: THREE.BufferGeometry = SHARED_GEOMETRIES.steppingStone;
+        if (prop.type === 'rock' || prop.type === 'mossy_rock') {
+            geometry = SHARED_GEOMETRIES.boulder;
+        } else if (prop.type === 'log') {
+            geometry = SHARED_GEOMETRIES.fallenLog;
+        } else if (prop.type === 'clover_mound') {
+            geometry = SHARED_GEOMETRIES.groundCloverMound;
+        } else if (prop.type === 'meadow_shrub') {
+            geometry = SHARED_GEOMETRIES.meadowShrub;
+        } else if (prop.type === 'wildflower_dot') {
+            geometry = SHARED_GEOMETRIES.wildflowerBlossom;
+        }
+
+        const castsShadow =
+            prop.type === 'rock' ||
+            prop.type === 'mossy_rock';
 
         collector.push(
             prop.type,
             geometry,
             prop.color,
-            0.88,
+            0.86,
             _instanceParentMatrix,
-            prop.type !== 'stone'
+            castsShadow
         );
 
         if (prop.type === 'mossy_rock') {
-            _instancePartMatrix.makeTranslation(0, 0.55, 0);
+            _instancePartMatrix.makeTranslation(0, 0.52, 0);
+            _combinedMatrix.multiplyMatrices(_instanceParentMatrix, _instancePartMatrix);
             collector.push(
                 'mossCap',
                 SHARED_GEOMETRIES.mossCap,
                 THEME.colors.meadowBase,
+                0.86,
+                _combinedMatrix,
+                false
+            );
+        } else if (prop.type === 'meadow_shrub') {
+            _instancePartMatrix.makeTranslation(0.32, -0.06, 0.18);
+            _combinedMatrix.multiplyMatrices(_instanceParentMatrix, _instancePartMatrix);
+            collector.push(
+                'meadowShrubLobeA',
+                SHARED_GEOMETRIES.meadowShrubLobe,
+                THEME.colors.meadowSunlit,
                 0.85,
-                _instanceParentMatrix.clone().multiply(_instancePartMatrix),
-                true
+                _combinedMatrix,
+                false
+            );
+            _instancePartMatrix.makeTranslation(-0.28, -0.08, -0.22);
+            _combinedMatrix.multiplyMatrices(_instanceParentMatrix, _instancePartMatrix);
+            collector.push(
+                'meadowShrubLobeB',
+                SHARED_GEOMETRIES.meadowShrubLobe,
+                THEME.colors.canopyOlive,
+                0.85,
+                _combinedMatrix,
+                false
             );
         }
     }
@@ -328,10 +391,6 @@ function buildPropBatches(propsList: PropData[]): ChunkInstanceBatch[] {
     return Array.from(collector.batches.values());
 }
 
-/**
- * One instanced draw call per geometry/colour batch. Matrices are uploaded once
- * on mount, so a whole chunk of vegetation costs no per-frame CPU transform work.
- */
 const ChunkInstancedBatch: React.FC<{ batch: ChunkInstanceBatch }> = React.memo(
     ({ batch }) => {
         const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -352,6 +411,7 @@ const ChunkInstancedBatch: React.FC<{ batch: ChunkInstanceBatch }> = React.memo(
                 args={[batch.geometry, batch.material, batch.matrices.length]}
                 castShadow={batch.castShadow}
                 receiveShadow
+                frustumCulled={true}
             />
         );
     }
@@ -365,7 +425,7 @@ interface TreeData {
     z: number;
     scale: number;
     rotY: number;
-    species: 'sakura' | 'pine' | 'oak' | 'shrub';
+    species: 'sakura' | 'pine' | 'oak';
 }
 
 interface PropData {
@@ -375,31 +435,37 @@ interface PropData {
     z: number;
     scale: [number, number, number];
     rot: [number, number, number];
-    type: 'rock' | 'mossy_rock' | 'log' | 'stone';
+    type:
+        | 'rock'
+        | 'mossy_rock'
+        | 'log'
+        | 'stone'
+        | 'clover_mound'
+        | 'meadow_shrub'
+        | 'wildflower_dot';
     color: string;
 }
 
 interface BiomeLandmarkData {
     id: string;
     kind:
-    | 'huge_sakura_glb'
-    | 'huge_green_glb'
-    | 'cottage_glb'
-    | 'campsite_glb'
-    | 'cart_glb'
-    | 'noticeboard_glb'
-    | 'lamp_glb'
-    | 'torii_glb'
-    | 'rock_arch_glb'
-    | 'rock_pillar_glb'
-    | 'flower_v1_glb'
-    | 'flower_v2_glb'
-    | 'old_tree_v1_glb'
-    | 'old_tree_v2_glb'
-    | 'tall_tree_v1_glb'
-    | 'tall_tree_v2_glb'
-    | 'pond_glb'
-    | 'mushroom_cluster';
+        | 'huge_sakura_glb'
+        | 'huge_green_glb'
+        | 'tent_glb'
+        | 'cart_glb'
+        | 'noticeboard_glb'
+        | 'lamp_glb'
+        | 'torii_glb'
+        | 'rock_arch_glb'
+        | 'rock_pillar_glb'
+        | 'flower_v1_glb'
+        | 'flower_v2_glb'
+        | 'old_tree_v1_glb'
+        | 'old_tree_v2_glb'
+        | 'tall_tree_v1_glb'
+        | 'tall_tree_v2_glb'
+        | 'pond_glb'
+        | 'bridge_arched';
     x: number;
     y: number;
     z: number;
@@ -407,929 +473,862 @@ interface BiomeLandmarkData {
     scale: number;
 }
 
+interface PrecomputedChunkData {
+    terrainGeo: THREE.BufferGeometry;
+    treeBatches: ChunkInstanceBatch[];
+    propBatches: ChunkInstanceBatch[];
+    heroLandmarks: BiomeLandmarkData[];
+    glbFieldTransforms: Record<string, THREE.Matrix4[]>;
+    colliders: SolidCollider[];
+}
+
+const CHUNK_DATA_CACHE = new Map<string, PrecomputedChunkData>();
+const MAX_CACHED_CHUNKS = 49;
+
+function evictOldChunksIfNeeded(activeCoord: [number, number], seed: string) {
+    if (CHUNK_DATA_CACHE.size <= MAX_CACHED_CHUNKS) return;
+
+    for (const [key, data] of CHUNK_DATA_CACHE.entries()) {
+        const parts = key.split('_');
+        const cx = Number(parts[0]);
+        const cz = Number(parts[1]);
+        const keySeed = parts.slice(2).join('_');
+        const dist = Math.max(
+            Math.abs(cx - activeCoord[0]),
+            Math.abs(cz - activeCoord[1])
+        );
+        if (keySeed !== seed || dist > ACTIVE_CHUNK_RADIUS + 2) {
+            data.terrainGeo.dispose();
+            CHUNK_DATA_CACHE.delete(key);
+        }
+    }
+}
+
+// Reusable scratch colors for terrain vertex color calculation
+const _cBaseA = new THREE.Color();
+const _cSunA = new THREE.Color();
+const _cShadA = new THREE.Color();
+const _cPathA = new THREE.Color();
+const _cBaseB = new THREE.Color();
+const _cSunB = new THREE.Color();
+const _cShadB = new THREE.Color();
+const _cPathB = new THREE.Color();
+const _tempA = new THREE.Color();
+const _tempB = new THREE.Color();
+const _dummyObj = new THREE.Object3D();
+
+function buildChunkData(
+    cx: number,
+    cz: number,
+    worldSeed: string
+): PrecomputedChunkData {
+    const cacheKey = `${cx}_${cz}_${worldSeed}`;
+    const existing = CHUNK_DATA_CACHE.get(cacheKey);
+    if (existing) return existing;
+
+    const worldOriginX = cx * CHUNK_SIZE;
+    const worldOriginZ = cz * CHUNK_SIZE;
+
+    // 1. Seamlessly Stitched Biome Terrain Geometry
+    const plane = new THREE.PlaneGeometry(
+        CHUNK_SIZE,
+        CHUNK_SIZE,
+        CHUNK_SEGMENTS,
+        CHUNK_SEGMENTS
+    );
+    plane.rotateX(-Math.PI / 2);
+
+    const nonIndexed = plane.toNonIndexed();
+    plane.dispose();
+
+    const pos = nonIndexed.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+
+    // Cache vertex evaluations within the chunk so all 6 shared triangle vertices at
+    // grid intersections get the exact same height and color (eliminates micro-seams)
+    const vertexSampleCache = new Map<string, { wy: number; r: number; g: number; b: number }>();
+
+    for (let i = 0; i < pos.count; i++) {
+        const lx = pos.getX(i);
+        const lz = pos.getZ(i);
+        // Snap world coordinates to 0.001m grid so adjacent chunk borders match bit-for-bit
+        const wx = Math.round((lx + worldOriginX) * 1000) / 1000;
+        const wz = Math.round((lz + worldOriginZ) * 1000) / 1000;
+        const vKey = `${wx}_${wz}`;
+
+        let cachedV = vertexSampleCache.get(vKey);
+        if (!cachedV) {
+            const wy = getGardenTerrainHeight(wx, wz);
+            const biomeSample = getBiomeSampleAt(wx, wz);
+            const cfgA = BIOME_CONFIGS[biomeSample.primary];
+            const cfgB = BIOME_CONFIGS[biomeSample.secondary];
+
+            _cBaseA.set(cfgA.baseColor);
+            _cSunA.set(cfgA.sunlitColor);
+            _cShadA.set(cfgA.shadowColor);
+            _cPathA.set(cfgA.pathColor);
+
+            _cBaseB.set(cfgB.baseColor);
+            _cSunB.set(cfgB.sunlitColor);
+            _cShadB.set(cfgB.shadowColor);
+            _cPathB.set(cfgB.pathColor);
+
+            const dapple =
+                0.48 +
+                wy * 0.08 +
+                Math.sin(wx * 0.09 - wz * 0.07) * 0.18 +
+                Math.cos(wx * 0.21 + wz * 0.19) * 0.08;
+            const sunBlend = THREE.MathUtils.clamp(dapple, 0, 1);
+
+            _tempA.copy(_cBaseA).lerp(_cSunA, sunBlend * 0.72);
+            _tempB.copy(_cBaseB).lerp(_cSunB, sunBlend * 0.72);
+
+            if (wy < -0.25) {
+                const shadowStrength = Math.min(Math.abs(wy + 0.25) * 0.35, 0.45);
+                _tempA.lerp(_cShadA, shadowStrength);
+                _tempB.lerp(_cShadB, shadowStrength);
+            }
+
+            _tempA.lerp(_tempB, biomeSample.blend);
+            _cPathA.lerp(_cPathB, biomeSample.blend);
+
+            if (biomeSample.clearingFactor > 0.05) {
+                _tempA.lerp(_cSunA, biomeSample.clearingFactor * 0.18);
+            }
+
+            const distToPath = getDistanceToNearestPath(wx, wz);
+            if (distToPath < 2.45) {
+                _tempA.lerp(_cPathA, (1 - distToPath / 2.45) * 0.58);
+            }
+
+            cachedV = { wy, r: _tempA.r, g: _tempA.g, b: _tempA.b };
+            vertexSampleCache.set(vKey, cachedV);
+        }
+
+        pos.setY(i, cachedV.wy);
+        colors[i * 3] = cachedV.r;
+        colors[i * 3 + 1] = cachedV.g;
+        colors[i * 3 + 2] = cachedV.b;
+    }
+
+    nonIndexed.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    nonIndexed.computeVertexNormals();
+
+    // 2. Deterministic Biome Composition & Natural Plains Clusters
+    const generatedTrees: TreeData[] = [];
+    const generatedProps: PropData[] = [];
+    const generatedLandmarks: BiomeLandmarkData[] = [];
+    const generatedColliders: SolidCollider[] = [];
+
+    const occupiedCircles: Array<{ x: number; z: number; r: number }> = [];
+
+    const isPositionFree = (
+        wx: number,
+        wz: number,
+        radius: number,
+        minPathClearance = 2.6,
+        allowVillageRim = false
+    ): boolean => {
+        const distOrigin = Math.hypot(wx, wz);
+        if (!allowVillageRim && distOrigin < 22.5) return false;
+        if (allowVillageRim && distOrigin < 14.0) return false;
+        if (isInsideSanctuaryClearing(wx, wz, radius)) return false;
+        if (getDistanceToNearestPath(wx, wz) < minPathClearance + radius * 0.5) {
+            return false;
+        }
+        if (getTerrainSlope(wx, wz) > 0.25) return false;
+
+        for (let i = 0; i < occupiedCircles.length; i++) {
+            const oc = occupiedCircles[i];
+            if (Math.hypot(wx - oc.x, wz - oc.z) < radius + oc.r + 0.5) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const registerOccupied = (wx: number, wz: number, r: number) => {
+        occupiedCircles.push({ x: wx, z: wz, r });
+    };
+
+    // A. Winding Path Stepping Stones
+    const zStart = worldOriginZ - CHUNK_SIZE / 2;
+    const zEnd = worldOriginZ + CHUNK_SIZE / 2;
+    const xStart = worldOriginX - CHUNK_SIZE / 2;
+    const xEnd = worldOriginX + CHUNK_SIZE / 2;
+    const stepSpacing = 2.1;
+
+    const firstZIdx = Math.ceil(zStart / stepSpacing);
+    const lastZIdx = Math.floor(zEnd / stepSpacing);
+    for (let sIdx = firstZIdx; sIdx <= lastZIdx; sIdx++) {
+        const wz = sIdx * stepSpacing;
+        const pathX = getPathCenterX(wz);
+        const wx = pathX + (sIdx % 2 === 0 ? 0.24 : -0.24);
+
+        if (wx >= xStart && wx < xEnd) {
+            const wy = getGardenTerrainHeight(wx, wz);
+            generatedProps.push({
+                id: `stone_ns_${cacheKey}_${sIdx}`,
+                x: wx - worldOriginX,
+                y: wy + 0.02,
+                z: wz - worldOriginZ,
+                scale: [0.95, 1, 0.85],
+                rot: [0, (sIdx * 0.7) % Math.PI, 0],
+                type: 'stone',
+                color: sIdx % 3 === 0 ? THEME.colors.stoneSunlit : THEME.colors.stoneBase,
+            });
+        }
+    }
+
+    const firstXIdx = Math.ceil(xStart / stepSpacing);
+    const lastXIdx = Math.floor(xEnd / stepSpacing);
+    for (let xIdx = firstXIdx; xIdx <= lastXIdx; xIdx++) {
+        const wx = xIdx * stepSpacing;
+        const pathZ = getSecondaryPathCenterZ(wx);
+        if (Math.abs(wx - getPathCenterX(pathZ)) < 1.8) continue;
+
+        const wz = pathZ + (xIdx % 2 === 0 ? 0.22 : -0.22);
+
+        if (wz >= zStart && wz < zEnd) {
+            const wy = getGardenTerrainHeight(wx, wz);
+            generatedProps.push({
+                id: `stone_ew_${cacheKey}_${xIdx}`,
+                x: wx - worldOriginX,
+                y: wy + 0.02,
+                z: wz - worldOriginZ,
+                scale: [0.9, 1, 0.85],
+                rot: [0, (xIdx * 0.9) % Math.PI, 0],
+                type: 'stone',
+                color: xIdx % 2 === 0 ? THEME.colors.stoneBase : THEME.colors.stoneSunlit,
+            });
+        }
+    }
+
+    // B. Structured Biome Landmarks (for non-origin chunks)
+    const centerBiomeSample = getBiomeSampleAt(worldOriginX, worldOriginZ);
+    const chunkBiome: BiomeType = centerBiomeSample.primary;
+
+    if (cx !== 0 || cz !== 0) {
+        const focalX =
+            worldOriginX + (hash2D(cx, cz, 211) - 0.5) * (CHUNK_SIZE * 0.42);
+        const focalZ =
+            worldOriginZ + (hash2D(cx, cz, 223) - 0.5) * (CHUNK_SIZE * 0.42);
+        const focalRot = hash2D(cx, cz, 229) * Math.PI * 2;
+
+        if (chunkBiome === 'blossom_grove') {
+            if (isPositionFree(focalX, focalZ, 3.4, 3.6)) {
+                const fy = getGardenTerrainHeight(focalX, focalZ);
+                generatedLandmarks.push({
+                    id: `lm_sakura_${cacheKey}`,
+                    kind: 'huge_sakura_glb',
+                    x: focalX - worldOriginX,
+                    y: fy,
+                    z: focalZ - worldOriginZ,
+                    rotY: focalRot,
+                    scale: 0.95 + hash2D(cx, cz, 233) * 0.18,
+                });
+                registerOccupied(focalX, focalZ, 3.4);
+                generatedColliders.push({
+                    id: `col_lm_sakura_${cacheKey}`,
+                    x: focalX,
+                    y: fy,
+                    z: focalZ,
+                    radius: 1.45,
+                    height: 8.0,
+                    blocksCamera: true,
+                });
+
+                const subX = focalX + Math.cos(focalRot + 1.4) * 6.8;
+                const subZ = focalZ + Math.sin(focalRot + 1.4) * 6.8;
+                if (
+                    isPositionFree(subX, subZ, 3.0, 2.6) &&
+                    getTerrainSlope(subX, subZ) < 0.14
+                ) {
+                    const sy = getGardenTerrainHeight(subX, subZ);
+                    const useTorii = hash2D(cx, cz, 239) > 0.45;
+                    generatedLandmarks.push({
+                        id: `lm_sakura_sub_${cacheKey}`,
+                        kind: useTorii ? 'torii_glb' : 'pond_glb',
+                        x: subX - worldOriginX,
+                        y: sy,
+                        z: subZ - worldOriginZ,
+                        rotY: focalRot + Math.PI / 2,
+                        scale: useTorii ? 0.94 : 0.72,
+                    });
+                    registerOccupied(subX, subZ, 3.0);
+                }
+            }
+        } else if (chunkBiome === 'evergreen_forest') {
+            if (isPositionFree(focalX, focalZ, 3.4, 3.6)) {
+                const fy = getGardenTerrainHeight(focalX, focalZ);
+                generatedLandmarks.push({
+                    id: `lm_green_${cacheKey}`,
+                    kind: 'huge_green_glb',
+                    x: focalX - worldOriginX,
+                    y: fy,
+                    z: focalZ - worldOriginZ,
+                    rotY: focalRot,
+                    scale: 0.96 + hash2D(cx, cz, 263) * 0.2,
+                });
+                registerOccupied(focalX, focalZ, 3.4);
+                generatedColliders.push({
+                    id: `col_lm_green_${cacheKey}`,
+                    x: focalX,
+                    y: fy,
+                    z: focalZ,
+                    radius: 1.5,
+                    height: 8.5,
+                    blocksCamera: true,
+                });
+
+                const ruinX = focalX + Math.cos(focalRot + 2.1) * 6.5;
+                const ruinZ = focalZ + Math.sin(focalRot + 2.1) * 6.5;
+                if (isPositionFree(ruinX, ruinZ, 2.4, 2.6)) {
+                    const ry = getGardenTerrainHeight(ruinX, ruinZ);
+                    generatedLandmarks.push({
+                        id: `lm_forest_ruin_${cacheKey}`,
+                        kind: 'rock_pillar_glb',
+                        x: ruinX - worldOriginX,
+                        y: ry,
+                        z: ruinZ - worldOriginZ,
+                        rotY: focalRot,
+                        scale: 0.95,
+                    });
+                    registerOccupied(ruinX, ruinZ, 1.4);
+                }
+            }
+        } else if (chunkBiome === 'meadow') {
+            if (
+                isPositionFree(focalX, focalZ, 4.2, 3.4) &&
+                getTerrainSlope(focalX, focalZ) < 0.14
+            ) {
+                const fy = getGardenTerrainHeight(focalX, focalZ);
+                generatedLandmarks.push({
+                    id: `lm_pond_main_${cacheKey}`,
+                    kind: 'pond_glb',
+                    x: focalX - worldOriginX,
+                    y: fy + 0.02,
+                    z: focalZ - worldOriginZ,
+                    rotY: focalRot,
+                    scale: 0.86 + hash2D(cx, cz, 281) * 0.16,
+                });
+                registerOccupied(focalX, focalZ, 4.2);
+
+                if (hash2D(cx, cz, 283) > 0.4) {
+                    generatedLandmarks.push({
+                        id: `lm_pond_bridge_${cacheKey}`,
+                        kind: 'bridge_arched',
+                        x: focalX - worldOriginX,
+                        y: fy + 0.05,
+                        z: focalZ - worldOriginZ,
+                        rotY: focalRot + 0.4,
+                        scale: 0.95,
+                    });
+                }
+            }
+        } else if (chunkBiome === 'ancient_ruins') {
+            if (isPositionFree(focalX, focalZ, 3.2, 3.0)) {
+                const fy = getGardenTerrainHeight(focalX, focalZ);
+                generatedLandmarks.push({
+                    id: `lm_arch_${cacheKey}`,
+                    kind: 'rock_arch_glb',
+                    x: focalX - worldOriginX,
+                    y: fy,
+                    z: focalZ - worldOriginZ,
+                    rotY: focalRot,
+                    scale: 0.98,
+                });
+                registerOccupied(focalX, focalZ, 3.2);
+
+                for (let p = 0; p < 3; p++) {
+                    const pa = focalRot + (p - 1) * 0.95;
+                    const pr = 5.0 + (p % 2) * 1.1;
+                    const px = focalX + Math.cos(pa) * pr;
+                    const pz = focalZ + Math.sin(pa) * pr;
+                    if (isPositionFree(px, pz, 1.1, 2.4)) {
+                        const py = getGardenTerrainHeight(px, pz);
+                        generatedLandmarks.push({
+                            id: `lm_pillar_${cacheKey}_${p}`,
+                            kind: 'rock_pillar_glb',
+                            x: px - worldOriginX,
+                            y: py,
+                            z: pz - worldOriginZ,
+                            rotY: pa + Math.PI,
+                            scale: 0.88 + hash2D(cx + p, cz, 271) * 0.22,
+                        });
+                        registerOccupied(px, pz, 1.1);
+                        generatedColliders.push({
+                            id: `col_pillar_${cacheKey}_${p}`,
+                            x: px,
+                            y: py,
+                            z: pz,
+                            radius: 0.65,
+                            height: 3.0,
+                            blocksCamera: true,
+                        });
+                    }
+                }
+            }
+        } else if (chunkBiome === 'explorers_rest') {
+            if (
+                isPositionFree(focalX, focalZ, 3.2, 3.2) &&
+                getTerrainSlope(focalX, focalZ) < 0.16
+            ) {
+                const fy = getGardenTerrainHeight(focalX, focalZ);
+                generatedLandmarks.push({
+                    id: `lm_tent_${cacheKey}`,
+                    kind: 'tent_glb',
+                    x: focalX - worldOriginX,
+                    y: fy,
+                    z: focalZ - worldOriginZ,
+                    rotY: focalRot,
+                    scale: 0.96,
+                });
+                registerOccupied(focalX, focalZ, 2.4);
+                generatedColliders.push({
+                    id: `col_tent_${cacheKey}`,
+                    x: focalX,
+                    y: fy,
+                    z: focalZ,
+                    radius: 1.35,
+                    height: 2.5,
+                    blocksCamera: false,
+                });
+
+                const cartX = focalX + Math.cos(focalRot + 1.2) * 4.5;
+                const cartZ = focalZ + Math.sin(focalRot + 1.2) * 4.5;
+                if (isPositionFree(cartX, cartZ, 1.5, 2.4)) {
+                    generatedLandmarks.push({
+                        id: `lm_cart_${cacheKey}`,
+                        kind: 'cart_glb',
+                        x: cartX - worldOriginX,
+                        y: getGardenTerrainHeight(cartX, cartZ),
+                        z: cartZ - worldOriginZ,
+                        rotY: focalRot - 0.4,
+                        scale: 0.95,
+                    });
+                    registerOccupied(cartX, cartZ, 1.5);
+                }
+
+                const nbX = focalX + Math.cos(focalRot - 1.05) * 4.0;
+                const nbZ = focalZ + Math.sin(focalRot - 1.05) * 4.0;
+                if (isPositionFree(nbX, nbZ, 1.2, 2.2)) {
+                    generatedLandmarks.push({
+                        id: `lm_nb_${cacheKey}`,
+                        kind: 'noticeboard_glb',
+                        x: nbX - worldOriginX,
+                        y: getGardenTerrainHeight(nbX, nbZ),
+                        z: nbZ - worldOriginZ,
+                        rotY: focalRot + Math.PI,
+                        scale: 0.95,
+                    });
+                    registerOccupied(nbX, nbZ, 1.2);
+                }
+
+                const lampX = focalX + Math.cos(focalRot - 0.35) * 3.6;
+                const lampZ = focalZ + Math.sin(focalRot - 0.35) * 3.6;
+                if (isPositionFree(lampX, lampZ, 0.8, 2.0)) {
+                    generatedLandmarks.push({
+                        id: `lm_lamp_${cacheKey}`,
+                        kind: 'lamp_glb',
+                        x: lampX - worldOriginX,
+                        y: getGardenTerrainHeight(lampX, lampZ),
+                        z: lampZ - worldOriginZ,
+                        rotY: focalRot,
+                        scale: 0.95,
+                    });
+                    registerOccupied(lampX, lampZ, 0.8);
+                }
+            }
+        }
+    }
+
+    // C. Instanced Master GLB Old Trees & Tall Trees (from `public/models/`)
+    const GLB_TREE_KINDS = [
+        'old_tree_v1_glb',
+        'old_tree_v2_glb',
+        'tall_tree_v1_glb',
+        'tall_tree_v2_glb',
+    ] as const;
+
+    const glbTreeSlots =
+        chunkBiome === 'evergreen_forest'
+            ? 4
+            : chunkBiome === 'meadow'
+                ? 2
+                : 3;
+
+    for (let i = 0; i < glbTreeSlots; i++) {
+        const lx = (hash2D(cx, cz, i * 17 + 900) - 0.5) * (CHUNK_SIZE - 6);
+        const lz = (hash2D(cx, cz, i * 17 + 901) - 0.5) * (CHUNK_SIZE - 6);
+        const wx = worldOriginX + lx;
+        const wz = worldOriginZ + lz;
+
+        const sample = getBiomeSampleAt(wx, wz);
+        if (sample.clearingFactor > 0.45) continue;
+
+        const treeScale = 0.82 + hash2D(cx + i, cz, 907) * 0.42;
+        if (!isPositionFree(wx, wz, 0.95 * treeScale, 3.6)) continue;
+
+        const wy = getGardenTerrainHeight(wx, wz);
+        const variant = Math.floor(hash2D(cx, cz + i, 911) * 4) % 4;
+
+        generatedLandmarks.push({
+            id: `lm_glbtree_${cacheKey}_${i}`,
+            kind: GLB_TREE_KINDS[variant],
+            x: lx,
+            y: wy,
+            z: lz,
+            rotY: hash2D(cx, cz, 919 + i) * Math.PI * 2,
+            scale: treeScale,
+        });
+        registerOccupied(wx, wz, 0.9 * treeScale);
+        generatedColliders.push({
+            id: `col_glbtree_${cacheKey}_${i}`,
+            x: wx,
+            y: wy,
+            z: wz,
+            radius: 0.5 * treeScale,
+            height: 6.0,
+            blocksCamera: false,
+        });
+    }
+
+    // D. Biome-Specific Procedural Trees (Sakura, Pine, Oak)
+    const maxTreeSlots = 16;
+    for (let i = 0; i < maxTreeSlots; i++) {
+        const seed = hash2D(cx * 37 + i, cz * 53 + i, 101);
+        const lx = (hash2D(cx, cz, i * 11 + 1) - 0.5) * (CHUNK_SIZE - 4);
+        const lz = (hash2D(cx, cz, i * 11 + 2) - 0.5) * (CHUNK_SIZE - 4);
+        const wx = worldOriginX + lx;
+        const wz = worldOriginZ + lz;
+
+        const sample = getBiomeSampleAt(wx, wz);
+        const cfg = sample.config;
+
+        if (sample.clearingFactor > 0.5) continue;
+        if (seed > cfg.treeDensity) continue;
+
+        const scale = 0.82 + hash2D(cx + i, cz, 409) * 0.65;
+        if (!isPositionFree(wx, wz, 0.85 * scale, 3.4)) continue;
+
+        const wy = getGardenTerrainHeight(wx, wz);
+        const speciesRoll = hash2D(cx, cz + i, 419);
+
+        let species: TreeData['species'] = 'oak';
+        if (sample.primary === 'blossom_grove') {
+            species = speciesRoll < 0.78 ? 'sakura' : 'oak';
+        } else if (sample.primary === 'evergreen_forest') {
+            species = speciesRoll < 0.75 ? 'pine' : 'oak';
+        } else if (sample.primary === 'meadow') {
+            species = speciesRoll < 0.55 ? 'sakura' : 'oak';
+        } else if (sample.primary === 'ancient_ruins') {
+            species = speciesRoll < 0.55 ? 'pine' : 'oak';
+        } else {
+            species =
+                speciesRoll < 0.4
+                    ? 'sakura'
+                    : speciesRoll < 0.75
+                        ? 'oak'
+                        : 'pine';
+        }
+
+        generatedTrees.push({
+            id: `tree_${cacheKey}_${i}`,
+            x: lx,
+            y: wy - 0.04,
+            z: lz,
+            scale,
+            rotY: hash2D(cx, cz, 431 + i) * Math.PI * 2,
+            species,
+        });
+        registerOccupied(wx, wz, 0.85 * scale);
+
+        generatedColliders.push({
+            id: `col_tree_${cacheKey}_${i}`,
+            x: wx,
+            y: wy,
+            z: wz,
+            radius: 0.42 * scale,
+            height: 4.2 * scale,
+            blocksCamera: true,
+        });
+    }
+
+    // E. Biome-Modulated Rocks, Mossy Boulders & Logs
+    const maxRockSlots = 12;
+    for (let r = 0; r < maxRockSlots; r++) {
+        const rSeed = hash2D(cx * 19 + r, cz * 29 + r, 303);
+        const lx = (hash2D(cx, cz, r * 17 + 70) - 0.5) * (CHUNK_SIZE - 3);
+        const lz = (hash2D(cx, cz, r * 17 + 71) - 0.5) * (CHUNK_SIZE - 3);
+        const wx = worldOriginX + lx;
+        const wz = worldOriginZ + lz;
+
+        const sample = getBiomeSampleAt(wx, wz);
+        if (rSeed > sample.config.rockDensity) continue;
+        if (!isPositionFree(wx, wz, 1.0, 2.8)) continue;
+
+        const wy = getGardenTerrainHeight(wx, wz);
+        const isFallenLog =
+            (sample.primary === 'evergreen_forest' ||
+                sample.primary === 'explorers_rest') &&
+            r % 4 === 0;
+
+        if (isFallenLog) {
+            const logScale = 0.78 + rSeed * 0.42;
+            const normal = getGardenTerrainNormal(wx, wz);
+            generatedProps.push({
+                id: `log_${cacheKey}_${r}`,
+                x: lx,
+                y: wy + 0.05,
+                z: lz,
+                scale: [logScale, logScale, logScale],
+                rot: [
+                    Math.PI / 2 + normal.z * 0.25,
+                    rSeed * Math.PI,
+                    -normal.x * 0.25,
+                ],
+                type: 'log',
+                color: THEME.colors.barkBase,
+            });
+            registerOccupied(wx, wz, 1.1);
+        } else {
+            const sizeMult = sample.primary === 'ancient_ruins' ? 1.25 : 1.0;
+            const sx = (0.62 + rSeed * 0.82) * sizeMult;
+            const sy = (0.52 + hash2D(cx + r, cz, 521) * 0.62) * sizeMult;
+            const sz = (0.62 + hash2D(cx, cz + r, 523) * 0.82) * sizeMult;
+
+            generatedProps.push({
+                id: `rock_${cacheKey}_${r}`,
+                x: lx,
+                y: wy - 0.12,
+                z: lz,
+                scale: [sx, sy, sz],
+                rot: [0, rSeed * Math.PI * 2, 0],
+                type:
+                    sample.primary === 'evergreen_forest' || r % 3 === 0
+                        ? 'mossy_rock'
+                        : 'rock',
+                color:
+                    r % 2 === 0
+                        ? THEME.colors.stoneBase
+                        : THEME.colors.stoneSunlit,
+            });
+            registerOccupied(wx, wz, 0.75 * sx);
+
+            if (sx > 0.82) {
+                generatedColliders.push({
+                    id: `col_rock_${cacheKey}_${r}`,
+                    x: wx,
+                    y: wy,
+                    z: wz,
+                    radius: 0.68 * sx,
+                    height: 1.1 * sy,
+                    blocksCamera: sx > 1.1,
+                });
+            }
+        }
+    }
+
+    // F. Seed-Driven Organic Meadow Clusters
+    const clusterCentersCount = 9;
+    for (let c = 0; c < clusterCentersCount; c++) {
+        const clx = (hash2D(cx, cz, c * 13 + 600) - 0.5) * (CHUNK_SIZE - 5);
+        const clz = (hash2D(cx, cz, c * 13 + 601) - 0.5) * (CHUNK_SIZE - 5);
+        const cwx = worldOriginX + clx;
+        const cwz = worldOriginZ + clz;
+
+        if (!isPositionFree(cwx, cwz, 0.9, 2.4, true)) continue;
+
+        const biomeSample = getBiomeSampleAt(cwx, cwz);
+        const clusterItems = 3 + (Math.floor(hash2D(cx + c, cz, 605) * 3) % 3);
+
+        for (let m = 0; m < clusterItems; m++) {
+            const angle = hash2D(cx, cz + m, c * 19 + 610) * Math.PI * 2;
+            const dist = m === 0 ? 0 : 0.65 + hash2D(cx + m, cz, c * 19 + 611) * 2.2;
+            const wx = cwx + Math.cos(angle) * dist;
+            const wz = cwz + Math.sin(angle) * dist;
+
+            if (
+                wx < xStart + 1.5 ||
+                wx > xEnd - 1.5 ||
+                wz < zStart + 1.5 ||
+                wz > zEnd - 1.5
+            ) {
+                continue;
+            }
+            if (!isPositionFree(wx, wz, 0.45, 2.2, true)) continue;
+
+            const lx = wx - worldOriginX;
+            const lz = wz - worldOriginZ;
+            const wy = getGardenTerrainHeight(wx, wz);
+            const rotY = hash2D(cx + m, cz + c, 617) * Math.PI * 2;
+            const roll = hash2D(cx, cz, c * 29 + m * 7 + 620);
+
+            if (roll < 0.36) {
+                const bushScale = 0.62 + hash2D(cx + c, cz + m, 623) * 0.52;
+                generatedProps.push({
+                    id: `shrub_${cacheKey}_${c}_${m}`,
+                    x: lx,
+                    y: wy + 0.18 * bushScale,
+                    z: lz,
+                    scale: [bushScale, bushScale * 0.88, bushScale],
+                    rot: [0, rotY, 0],
+                    type: 'meadow_shrub',
+                    color:
+                        m % 2 === 0
+                            ? THEME.colors.meadowBase
+                            : THEME.colors.canopyOlive,
+                });
+            } else if (roll < 0.68) {
+                const sx = 0.65 + hash2D(cx, cz + m, 629) * 0.65;
+                const sy = 0.45 + hash2D(cx + m, cz, 631) * 0.4;
+                generatedProps.push({
+                    id: `clover_${cacheKey}_${c}_${m}`,
+                    x: lx,
+                    y: wy + 0.02,
+                    z: lz,
+                    scale: [sx, sy, sx * (0.85 + (m % 2) * 0.2)],
+                    rot: [0, rotY, 0],
+                    type: 'clover_mound',
+                    color:
+                        m % 2 === 0
+                            ? biomeSample.config.sunlitColor
+                            : THEME.colors.grassTuft,
+                });
+            } else if (roll < 0.8 && m === 0 && c < 3) {
+                const flScale = 0.78 + hash2D(cx + m, cz + c, 641) * 0.42;
+                generatedLandmarks.push({
+                    id: `cluster_fl_${cacheKey}_${c}_${m}`,
+                    kind: (c + m) % 2 === 0 ? 'flower_v1_glb' : 'flower_v2_glb',
+                    x: lx,
+                    y: wy,
+                    z: lz,
+                    rotY,
+                    scale: flScale,
+                });
+            } else {
+                const dotScale = 0.78 + hash2D(cx, cz, 647 + m) * 0.45;
+                generatedProps.push({
+                    id: `wfdot_${cacheKey}_${c}_${m}`,
+                    x: lx,
+                    y: wy + 0.12,
+                    z: lz,
+                    scale: [dotScale, dotScale * 0.7, dotScale],
+                    rot: [0.15, rotY, 0],
+                    type: 'wildflower_dot',
+                    color:
+                        (c + m) % 3 === 0
+                            ? THEME.colors.flowerCenter
+                            : (c + m) % 2 === 0
+                                ? THEME.colors.flowerPetalPink
+                                : THEME.colors.flowerPetal,
+                });
+            }
+        }
+    }
+
+    // G. Separate Instanced Master GLB Field Transforms from Unique Hero Landmarks
+    const glbFieldTransforms: Record<string, THREE.Matrix4[]> = {
+        old_tree_v1_glb: [],
+        old_tree_v2_glb: [],
+        tall_tree_v1_glb: [],
+        tall_tree_v2_glb: [],
+        pond_glb: [],
+        flower_v1_glb: [],
+        flower_v2_glb: [],
+        rock_pillar_glb: [],
+        lamp_glb: [],
+        tent_glb: [],
+        cart_glb: [],
+        noticeboard_glb: [],
+    };
+
+    const heroLandmarks: BiomeLandmarkData[] = [];
+
+    for (const lm of generatedLandmarks) {
+        const bucket = glbFieldTransforms[lm.kind];
+        if (bucket) {
+            _dummyObj.position.set(lm.x, lm.y, lm.z);
+            _dummyObj.rotation.set(0, lm.rotY, 0);
+            _dummyObj.scale.setScalar(lm.scale);
+            _dummyObj.updateMatrix();
+            bucket.push(_dummyObj.matrix.clone());
+        } else {
+            heroLandmarks.push(lm);
+        }
+    }
+
+    const result: PrecomputedChunkData = {
+        terrainGeo: nonIndexed,
+        treeBatches: buildTreeBatches(generatedTrees),
+        propBatches: buildPropBatches(generatedProps),
+        heroLandmarks,
+        glbFieldTransforms,
+        colliders: generatedColliders,
+    };
+
+    CHUNK_DATA_CACHE.set(cacheKey, result);
+    return result;
+}
+
 interface TerrainChunkProps {
     cx: number;
     cz: number;
-    worldSeed: string;
+    data: PrecomputedChunkData;
     onChunkReady?: (key: string) => void;
 }
 
 const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
-    ({ cx, cz, worldSeed, onChunkReady }) => {
-        const chunkKey = `${cx}_${cz}_${worldSeed}`;
+    ({ cx, cz, data, onChunkReady }) => {
         const worldOriginX = cx * CHUNK_SIZE;
         const worldOriginZ = cz * CHUNK_SIZE;
+        const sharedMaterial = useMemo(() => getSharedTerrainMaterial(), []);
 
-        const flowerMeshRef = useRef<THREE.InstancedMesh>(null);
-        const terrainMeshRef = useRef<THREE.Mesh>(null);
-
-        // 1. Biome-Aware Vertex-Colored Low-Poly Terrain Geometry
-        const terrainGeo = useMemo(() => {
-            const plane = new THREE.PlaneGeometry(
-                CHUNK_SIZE,
-                CHUNK_SIZE,
-                CHUNK_SEGMENTS,
-                CHUNK_SEGMENTS
-            );
-            plane.rotateX(-Math.PI / 2);
-
-            const nonIndexed = plane.toNonIndexed();
-            const pos = nonIndexed.attributes.position;
-            const colors = new Float32Array(pos.count * 3);
-
-            const cBaseA = new THREE.Color();
-            const cSunA = new THREE.Color();
-            const cShadA = new THREE.Color();
-            const cPathA = new THREE.Color();
-
-            const cBaseB = new THREE.Color();
-            const cSunB = new THREE.Color();
-            const cShadB = new THREE.Color();
-            const cPathB = new THREE.Color();
-
-            const tempA = new THREE.Color();
-            const tempB = new THREE.Color();
-
-            for (let i = 0; i < pos.count; i++) {
-                const lx = pos.getX(i);
-                const lz = pos.getZ(i);
-                const wx = lx + worldOriginX;
-                const wz = lz + worldOriginZ;
-
-                const wy = getGardenTerrainHeight(wx, wz);
-                pos.setY(i, wy);
-
-                const biomeSample = getBiomeSampleAt(wx, wz);
-                const cfgA = BIOME_CONFIGS[biomeSample.primary];
-                const cfgB = BIOME_CONFIGS[biomeSample.secondary];
-
-                cBaseA.set(cfgA.baseColor);
-                cSunA.set(cfgA.sunlitColor);
-                cShadA.set(cfgA.shadowColor);
-                cPathA.set(cfgA.pathColor);
-
-                cBaseB.set(cfgB.baseColor);
-                cSunB.set(cfgB.sunlitColor);
-                cShadB.set(cfgB.shadowColor);
-                cPathB.set(cfgB.pathColor);
-
-                const sunBlend = THREE.MathUtils.clamp(
-                    0.5 + wy * 0.09 + Math.sin(wx * 0.08 - wz * 0.06) * 0.22,
-                    0,
-                    1
-                );
-
-                tempA.copy(cBaseA).lerp(cSunA, sunBlend * 0.78);
-                tempB.copy(cBaseB).lerp(cSunB, sunBlend * 0.78);
-
-                if (wy < -0.25) {
-                    const shadowStrength = Math.min(Math.abs(wy + 0.25) * 0.4, 0.55);
-                    tempA.lerp(cShadA, shadowStrength);
-                    tempB.lerp(cShadB, shadowStrength);
-                }
-
-                // Smoothly blend between neighboring biome palettes
-                tempA.lerp(tempB, biomeSample.blend);
-                cPathA.lerp(cPathB, biomeSample.blend);
-
-                // Highlight natural clearings slightly
-                if (biomeSample.clearingFactor > 0.05) {
-                    tempA.lerp(cSunA, biomeSample.clearingFactor * 0.24);
-                }
-
-                const distToPath = getDistanceToNearestPath(wx, wz);
-                if (distToPath < 2.35) {
-                    tempA.lerp(cPathA, (1 - distToPath / 2.35) * 0.52);
-                }
-
-                colors[i * 3] = tempA.r;
-                colors[i * 3 + 1] = tempA.g;
-                colors[i * 3 + 2] = tempA.b;
-            }
-
-            nonIndexed.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-            nonIndexed.computeVertexNormals();
-
-            return nonIndexed;
-        }, [worldOriginX, worldOriginZ, worldSeed]);
-
-        // 2. Deterministic Biome-Composed Landmarks, Vegetation, Paths & Colliders
-        const {
-            trees,
-            propsList,
-            biomeLandmarks,
-            grassTransforms,
-            bushTransforms,
-            flowerTransforms,
-            colliders,
-        } = useMemo(() => {
-            const generatedTrees: TreeData[] = [];
-            const generatedProps: PropData[] = [];
-            const generatedLandmarks: BiomeLandmarkData[] = [];
-            const generatedColliders: SolidCollider[] = [];
-            const grassMatrices: THREE.Matrix4[] = [];
-            const bushMatrices: THREE.Matrix4[] = [];
-            const flowerMatrices: THREE.Matrix4[] = [];
-
-            // Track occupied [wx, wz, radius] to guarantee zero overlapping props
-            const occupiedCircles: Array<{ x: number; z: number; r: number }> = [];
-
-            const isPositionFree = (
-                wx: number,
-                wz: number,
-                radius: number,
-                minPathClearance = 2.8
-            ): boolean => {
-                // Keep player spawn point (0, 7.5) unobstructed
-                if (Math.hypot(wx, wz - 7.5) < 4.5 + radius) return false;
-                // Keep central Sanctuary hero landmarks unobstructed in chunk (0,0)
-                if (Math.hypot(wx, wz + 2.0) < 15.5) return false;
-                // Respect every hand-placed landmark and the spread-out props
-                if (isInsideSanctuaryClearing(wx, wz, radius)) return false;
-                // Keep winding trails clear
-                if (getDistanceToNearestPath(wx, wz) < minPathClearance + radius * 0.5) {
-                    return false;
-                }
-                // Prevent placing structures or trees on steep cliffs
-                if (getTerrainSlope(wx, wz) > 0.28) return false;
-
-                for (let i = 0; i < occupiedCircles.length; i++) {
-                    const oc = occupiedCircles[i];
-                    if (Math.hypot(wx - oc.x, wz - oc.z) < radius + oc.r + 0.6) {
-                        return false;
-                    }
-                }
-                return true;
-            };
-
-            const registerOccupied = (wx: number, wz: number, r: number) => {
-                occupiedCircles.push({ x: wx, z: wz, r });
-            };
-
-            const dummy = new THREE.Object3D();
-
-            // A. Winding Path Stepping Stones (Main N-S Trail + Cross E-W Trail)
-            const zStart = worldOriginZ - CHUNK_SIZE / 2;
-            const zEnd = worldOriginZ + CHUNK_SIZE / 2;
-            const xStart = worldOriginX - CHUNK_SIZE / 2;
-            const xEnd = worldOriginX + CHUNK_SIZE / 2;
-            const stepSpacing = 1.75;
-
-            const firstZIdx = Math.ceil(zStart / stepSpacing);
-            const lastZIdx = Math.floor(zEnd / stepSpacing);
-            for (let sIdx = firstZIdx; sIdx <= lastZIdx; sIdx++) {
-                const wz = sIdx * stepSpacing;
-                const pathX = getPathCenterX(wz);
-                const lateralJitter =
-                    (sIdx % 2 === 0 ? 0.25 : -0.25) +
-                    (hash2D(sIdx, 19, 101) - 0.5) * 0.16;
-                const wx = pathX + lateralJitter;
-
-                if (wx >= xStart && wx < xEnd) {
-                    const wy = getGardenTerrainHeight(wx, wz);
-                    generatedProps.push({
-                        id: `stone_ns_${chunkKey}_${sIdx}`,
-                        x: wx - worldOriginX,
-                        y: wy + 0.02,
-                        z: wz - worldOriginZ,
-                        scale: [
-                            0.92 + hash2D(sIdx, 7, 102) * 0.32,
-                            1,
-                            0.78 + hash2D(sIdx, 13, 103) * 0.25,
-                        ],
-                        rot: [0, hash2D(sIdx, 29, 104) * Math.PI, 0],
-                        type: 'stone',
-                        color:
-                            sIdx % 3 === 0
-                                ? THEME.colors.stoneSunlit
-                                : THEME.colors.stoneBase,
-                    });
-                }
-            }
-
-            const firstXIdx = Math.ceil(xStart / stepSpacing);
-            const lastXIdx = Math.floor(xEnd / stepSpacing);
-            for (let xIdx = firstXIdx; xIdx <= lastXIdx; xIdx++) {
-                const wx = xIdx * stepSpacing;
-                const pathZ = getSecondaryPathCenterZ(wx);
-                // Avoid doubling stones right at the main trail intersection
-                if (Math.abs(wx - getPathCenterX(pathZ)) < 1.8) continue;
-
-                const lateralJitter =
-                    (xIdx % 2 === 0 ? 0.24 : -0.24) +
-                    (hash2D(xIdx, 31, 105) - 0.5) * 0.16;
-                const wz = pathZ + lateralJitter;
-
-                if (wz >= zStart && wz < zEnd) {
-                    const wy = getGardenTerrainHeight(wx, wz);
-                    generatedProps.push({
-                        id: `stone_ew_${chunkKey}_${xIdx}`,
-                        x: wx - worldOriginX,
-                        y: wy + 0.02,
-                        z: wz - worldOriginZ,
-                        scale: [
-                            0.85 + hash2D(xIdx, 11, 106) * 0.3,
-                            1,
-                            0.85 + hash2D(xIdx, 17, 107) * 0.25,
-                        ],
-                        rot: [0, hash2D(xIdx, 37, 108) * Math.PI, 0],
-                        type: 'stone',
-                        color:
-                            xIdx % 2 === 0
-                                ? THEME.colors.stoneBase
-                                : THEME.colors.stoneSunlit,
-                    });
-                }
-            }
-
-            // B. Curated Biome Focal Landmark Composition (1 per non-origin chunk)
-            const centerBiomeSample = getBiomeSampleAt(worldOriginX, worldOriginZ);
-            const chunkBiome: BiomeType = centerBiomeSample.primary;
-
-            if (cx !== 0 || cz !== 0) {
-                const focalX =
-                    worldOriginX + (hash2D(cx, cz, 211) - 0.5) * (CHUNK_SIZE * 0.45);
-                const focalZ =
-                    worldOriginZ + (hash2D(cx, cz, 223) - 0.5) * (CHUNK_SIZE * 0.45);
-                const focalRot = hash2D(cx, cz, 229) * Math.PI * 2;
-
-                if (chunkBiome === 'blossom_grove') {
-                    // Monumental Blossom Tree Landmark + Surrounding GLB Memory Flowers
-                    if (isPositionFree(focalX, focalZ, 3.2, 3.8)) {
-                        const fy = getGardenTerrainHeight(focalX, focalZ);
-                        generatedLandmarks.push({
-                            id: `lm_sakura_${chunkKey}`,
-                            kind: 'huge_sakura_glb',
-                            x: focalX - worldOriginX,
-                            y: fy,
-                            z: focalZ - worldOriginZ,
-                            rotY: focalRot,
-                            scale: 0.92 + hash2D(cx, cz, 233) * 0.22,
-                        });
-                        registerOccupied(focalX, focalZ, 3.2);
-                        generatedColliders.push({
-                            id: `col_lm_sakura_${chunkKey}`,
-                            x: focalX,
-                            y: fy,
-                            z: focalZ,
-                            radius: 1.45,
-                            height: 8.0,
-                            blocksCamera: true,
-                        });
-
-                        // Ring of GLB memory flowers around the monumental tree
-                        for (let f = 0; f < 5; f++) {
-                            const fa = (f / 5) * Math.PI * 2 + focalRot;
-                            const fr = 3.2 + hash2D(cx + f, cz, 241) * 1.8;
-                            const flx = focalX + Math.cos(fa) * fr;
-                            const flz = focalZ + Math.sin(fa) * fr;
-                            const fly = getGardenTerrainHeight(flx, flz);
-                            generatedLandmarks.push({
-                                id: `lm_fl_${chunkKey}_${f}`,
-                                kind: f % 2 === 0 ? 'flower_v1_glb' : 'flower_v2_glb',
-                                x: flx - worldOriginX,
-                                y: fly,
-                                z: flz - worldOriginZ,
-                                rotY: fa,
-                                scale: 0.9 + hash2D(cx, cz + f, 251) * 0.35,
-                            });
-                        }
-                    }
-                } else if (chunkBiome === 'evergreen_forest') {
-                    // Monumental Green Elder Tree + Mushroom Clusters
-                    if (isPositionFree(focalX, focalZ, 3.2, 3.8)) {
-                        const fy = getGardenTerrainHeight(focalX, focalZ);
-                        generatedLandmarks.push({
-                            id: `lm_green_${chunkKey}`,
-                            kind: 'huge_green_glb',
-                            x: focalX - worldOriginX,
-                            y: fy,
-                            z: focalZ - worldOriginZ,
-                            rotY: focalRot,
-                            scale: 0.95 + hash2D(cx, cz, 263) * 0.25,
-                        });
-                        registerOccupied(focalX, focalZ, 3.2);
-                        generatedColliders.push({
-                            id: `col_lm_green_${chunkKey}`,
-                            x: focalX,
-                            y: fy,
-                            z: focalZ,
-                            radius: 1.5,
-                            height: 8.5,
-                            blocksCamera: true,
-                        });
-
-                        for (let m = 0; m < 3; m++) {
-                            const ma = (m / 3) * Math.PI * 2 + focalRot;
-                            const mx = focalX + Math.cos(ma) * 2.8;
-                            const mz = focalZ + Math.sin(ma) * 2.8;
-                            generatedLandmarks.push({
-                                id: `lm_mush_${chunkKey}_${m}`,
-                                kind: 'mushroom_cluster',
-                                x: mx - worldOriginX,
-                                y: getGardenTerrainHeight(mx, mz),
-                                z: mz - worldOriginZ,
-                                rotY: ma,
-                                scale: 1.0 + (m % 2) * 0.25,
-                            });
-                        }
-                    }
-                } else if (chunkBiome === 'ancient_ruins') {
-                    // Stone Archway Entrance + Standing Rock Pillars
-                    if (isPositionFree(focalX, focalZ, 3.0, 3.0)) {
-                        const fy = getGardenTerrainHeight(focalX, focalZ);
-                        generatedLandmarks.push({
-                            id: `lm_arch_${chunkKey}`,
-                            kind: 'rock_arch_glb',
-                            x: focalX - worldOriginX,
-                            y: fy,
-                            z: focalZ - worldOriginZ,
-                            rotY: focalRot,
-                            scale: 0.95,
-                        });
-                        registerOccupied(focalX, focalZ, 3.0);
-
-                        for (let p = 0; p < 3; p++) {
-                            const pa = focalRot + (p - 1) * 0.95;
-                            const pr = 4.6 + p * 1.1;
-                            const px = focalX + Math.cos(pa) * pr;
-                            const pz = focalZ + Math.sin(pa) * pr;
-                            if (isPositionFree(px, pz, 1.1, 2.2)) {
-                                const py = getGardenTerrainHeight(px, pz);
-                                generatedLandmarks.push({
-                                    id: `lm_pillar_${chunkKey}_${p}`,
-                                    kind: 'rock_pillar_glb',
-                                    x: px - worldOriginX,
-                                    y: py,
-                                    z: pz - worldOriginZ,
-                                    rotY: pa + 0.4,
-                                    scale: 0.85 + hash2D(cx + p, cz, 271) * 0.28,
-                                });
-                                registerOccupied(px, pz, 1.1);
-                                generatedColliders.push({
-                                    id: `col_pillar_${chunkKey}_${p}`,
-                                    x: px,
-                                    y: py,
-                                    z: pz,
-                                    radius: 0.65,
-                                    height: 3.0,
-                                    blocksCamera: true,
-                                });
-                            }
-                        }
-                    }
-                } else if (chunkBiome === 'explorers_rest') {
-                    // Explorer's Rest Clearing: Stone Cottage or Tent + Cart + Noticeboard + Street Lamp
-                    const useCottage = hash2D(cx, cz, 277) > 0.45;
-                    if (isPositionFree(focalX, focalZ, 3.5, 3.4)) {
-                        const fy = getGardenTerrainHeight(focalX, focalZ);
-                        generatedLandmarks.push({
-                            id: `lm_rest_main_${chunkKey}`,
-                            kind: useCottage ? 'cottage_glb' : 'campsite_glb',
-                            x: focalX - worldOriginX,
-                            y: fy,
-                            z: focalZ - worldOriginZ,
-                            rotY: focalRot,
-                            scale: 0.95,
-                        });
-                        registerOccupied(focalX, focalZ, 3.4);
-                        generatedColliders.push({
-                            id: `col_rest_main_${chunkKey}`,
-                            x: focalX,
-                            y: fy,
-                            z: focalZ,
-                            radius: useCottage ? 3.2 : 1.45,
-                            height: useCottage ? 5.2 : 3.6,
-                            blocksCamera: useCottage,
-                        });
-
-                        // Companion Wooden Cart
-                        const cartX = focalX + Math.cos(focalRot + 1.1) * 4.5;
-                        const cartZ = focalZ + Math.sin(focalRot + 1.1) * 4.5;
-                        if (isPositionFree(cartX, cartZ, 1.4, 2.2)) {
-                            const cy = getGardenTerrainHeight(cartX, cartZ);
-                            generatedLandmarks.push({
-                                id: `lm_cart_${chunkKey}`,
-                                kind: 'cart_glb',
-                                x: cartX - worldOriginX,
-                                y: cy,
-                                z: cartZ - worldOriginZ,
-                                rotY: focalRot - 0.5,
-                                scale: 1.0,
-                            });
-                            registerOccupied(cartX, cartZ, 1.4);
-                        }
-
-                        // Companion Notice Board & Street Lamp
-                        const nbX = focalX + Math.cos(focalRot - 0.9) * 4.2;
-                        const nbZ = focalZ + Math.sin(focalRot - 0.9) * 4.2;
-                        if (isPositionFree(nbX, nbZ, 1.2, 2.0)) {
-                            generatedLandmarks.push({
-                                id: `lm_nb_${chunkKey}`,
-                                kind: 'noticeboard_glb',
-                                x: nbX - worldOriginX,
-                                y: getGardenTerrainHeight(nbX, nbZ),
-                                z: nbZ - worldOriginZ,
-                                rotY: focalRot + Math.PI,
-                                scale: 1.0,
-                            });
-                            registerOccupied(nbX, nbZ, 1.2);
-                        }
-
-                        const lampX = focalX + Math.cos(focalRot - 0.3) * 3.8;
-                        const lampZ = focalZ + Math.sin(focalRot - 0.3) * 3.8;
-                        if (isPositionFree(lampX, lampZ, 0.8, 1.8)) {
-                            generatedLandmarks.push({
-                                id: `lm_lamp_${chunkKey}`,
-                                kind: 'lamp_glb',
-                                x: lampX - worldOriginX,
-                                y: getGardenTerrainHeight(lampX, lampZ),
-                                z: lampZ - worldOriginZ,
-                                rotY: focalRot,
-                                scale: 1.0,
-                            });
-                            registerOccupied(lampX, lampZ, 0.8);
-                        }
-                    }
-                } else if (chunkBiome === 'meadow') {
-                    // Open Scenic Meadow: Japanese Torii Gate framing the trail or Flower Sanctuary Ring
-                    const pathZ = worldOriginZ;
-                    const pathX = getPathCenterX(pathZ);
-                    if (
-                        Math.abs(pathX - worldOriginX) < CHUNK_SIZE * 0.38 &&
-                        hash2D(cx, cz, 283) > 0.4
-                    ) {
-                        const ty = getGardenTerrainHeight(pathX, pathZ);
-                        generatedLandmarks.push({
-                            id: `lm_torii_${chunkKey}`,
-                            kind: 'torii_glb',
-                            x: pathX - worldOriginX,
-                            y: ty,
-                            z: pathZ - worldOriginZ,
-                            rotY: 0.08,
-                            scale: 0.96,
-                        });
-                        registerOccupied(pathX - 1.5, pathZ, 0.7);
-                        registerOccupied(pathX + 1.5, pathZ, 0.7);
-                    }
-                    // Lush GLB Flower clusters across the meadow
-                    for (let f = 0; f < 6; f++) {
-                        const fx =
-                            worldOriginX +
-                            (hash2D(cx + f, cz, 293) - 0.5) * (CHUNK_SIZE - 8);
-                        const fz =
-                            worldOriginZ +
-                            (hash2D(cx, cz + f, 307) - 0.5) * (CHUNK_SIZE - 8);
-                        if (isPositionFree(fx, fz, 0.8, 2.2)) {
-                            generatedLandmarks.push({
-                                id: `lm_meadow_fl_${chunkKey}_${f}`,
-                                kind: f % 2 === 0 ? 'flower_v1_glb' : 'flower_v2_glb',
-                                x: fx - worldOriginX,
-                                y: getGardenTerrainHeight(fx, fz),
-                                z: fz - worldOriginZ,
-                                rotY: hash2D(cx, cz, 311 + f) * Math.PI * 2,
-                                scale: 0.85 + hash2D(cx, cz, 317 + f) * 0.45,
-                            });
-                        }
-                    }
-                }
-            }
-
-            // C2. GLB tree species (old-growth + tall) scattered like natural trees
-            const GLB_TREE_KINDS = [
-                'old_tree_v1_glb',
-                'old_tree_v2_glb',
-                'tall_tree_v1_glb',
-                'tall_tree_v2_glb',
-            ] as const;
-            for (let i = 0; i < 3; i++) {
-                const lx = (hash2D(cx, cz, i * 17 + 900) - 0.5) * (CHUNK_SIZE - 6);
-                const lz = (hash2D(cx, cz, i * 17 + 901) - 0.5) * (CHUNK_SIZE - 6);
-                const wx = worldOriginX + lx;
-                const wz = worldOriginZ + lz;
-
-                const sample = getBiomeSampleAt(wx, wz);
-                if (sample.clearingFactor > 0.5) continue;
-
-                const treeScale = 0.8 + hash2D(cx + i, cz, 907) * 0.5;
-                if (!isPositionFree(wx, wz, 0.95 * treeScale, 3.6)) continue;
-
-                const wy = getGardenTerrainHeight(wx, wz);
-                const variant = Math.floor(hash2D(cx, cz + i, 911) * 4) % 4;
-
-                generatedLandmarks.push({
-                    id: `lm_glbtree_${chunkKey}_${i}`,
-                    kind: GLB_TREE_KINDS[variant],
-                    x: lx,
-                    y: wy,
-                    z: lz,
-                    rotY: hash2D(cx, cz, 919 + i) * Math.PI * 2,
-                    scale: treeScale,
-                });
-                registerOccupied(wx, wz, 0.9 * treeScale);
-                generatedColliders.push({
-                    id: `col_glbtree_${chunkKey}_${i}`,
-                    x: wx,
-                    y: wy,
-                    z: wz,
-                    radius: 0.5 * treeScale,
-                    height: 6.0,
-                    blocksCamera: false,
-                });
-            }
-
-            // C3. Occasional ponds off the trail
-            if ((cx !== 0 || cz !== 0) && hash2D(cx, cz, 941) < 0.34) {
-                const px = worldOriginX + (hash2D(cx, cz, 943) - 0.5) * (CHUNK_SIZE * 0.5);
-                const pz = worldOriginZ + (hash2D(cx, cz, 947) - 0.5) * (CHUNK_SIZE * 0.5);
-                if (
-                    getDistanceToNearestPath(px, pz) > 6.5 &&
-                    isPositionFree(px, pz, 3.4, 4.2)
-                ) {
-                    generatedLandmarks.push({
-                        id: `lm_pond_${chunkKey}`,
-                        kind: 'pond_glb',
-                        x: px - worldOriginX,
-                        y: getGardenTerrainHeight(px, pz),
-                        z: pz - worldOriginZ,
-                        rotY: hash2D(cx, cz, 953) * Math.PI * 2,
-                        scale: 0.55 + hash2D(cx, cz, 957) * 0.2,
-                    });
-                    registerOccupied(px, pz, 3.4);
-                }
-            }
-
-            // C. Trailside Street Lamps at Key Path Bends
-            if ((Math.abs(cx) + Math.abs(cz)) % 2 === 1) {
-                const wz = worldOriginZ;
-                const wx = getPathCenterX(wz) + (cx % 2 === 0 ? 2.45 : -2.45);
-                if (
-                    wx >= xStart + 2 &&
-                    wx <= xEnd - 2 &&
-                    isPositionFree(wx, wz, 0.8, 1.6)
-                ) {
-                    const wy = getGardenTerrainHeight(wx, wz);
-                    generatedLandmarks.push({
-                        id: `trail_lamp_${chunkKey}`,
-                        kind: 'lamp_glb',
-                        x: wx - worldOriginX,
-                        y: wy,
-                        z: wz - worldOriginZ,
-                        rotY: cx % 2 === 0 ? -Math.PI / 2 : Math.PI / 2,
-                        scale: 0.95,
-                    });
-                    registerOccupied(wx, wz, 0.8);
-                }
-            }
-
-            // D. Biome-Specific Trees & Shrubs
-            const maxTreeSlots = 24;
-            for (let i = 0; i < maxTreeSlots; i++) {
-                const seed = hash2D(cx * 37 + i, cz * 53 + i, 101);
-                const lx = (hash2D(cx, cz, i * 11 + 1) - 0.5) * (CHUNK_SIZE - 4);
-                const lz = (hash2D(cx, cz, i * 11 + 2) - 0.5) * (CHUNK_SIZE - 4);
-                const wx = worldOriginX + lx;
-                const wz = worldOriginZ + lz;
-
-                const sample = getBiomeSampleAt(wx, wz);
-                const cfg = sample.config;
-
-                // Keep natural clearings open
-                if (sample.clearingFactor > 0.55) continue;
-                if (seed > cfg.treeDensity) continue;
-
-                const scale = 0.78 + hash2D(cx + i, cz, 409) * 0.72;
-                if (!isPositionFree(wx, wz, 0.85 * scale, 3.4)) continue;
-
-                const wy = getGardenTerrainHeight(wx, wz);
-                const speciesRoll = hash2D(cx, cz + i, 419);
-
-                let species: TreeData['species'] = 'oak';
-                if (sample.primary === 'blossom_grove') {
-                    species =
-                        speciesRoll < 0.68
-                            ? 'sakura'
-                            : speciesRoll < 0.86
-                                ? 'oak'
-                                : 'shrub';
-                } else if (sample.primary === 'evergreen_forest') {
-                    species =
-                        speciesRoll < 0.72
-                            ? 'pine'
-                            : speciesRoll < 0.88
-                                ? 'oak'
-                                : 'shrub';
-                } else if (sample.primary === 'meadow') {
-                    species =
-                        speciesRoll < 0.45
-                            ? 'shrub'
-                            : speciesRoll < 0.78
-                                ? 'sakura'
-                                : 'oak';
-                } else if (sample.primary === 'ancient_ruins') {
-                    species =
-                        speciesRoll < 0.48
-                            ? 'pine'
-                            : speciesRoll < 0.78
-                                ? 'shrub'
-                                : 'oak';
-                } else {
-                    species =
-                        speciesRoll < 0.35
-                            ? 'sakura'
-                            : speciesRoll < 0.65
-                                ? 'oak'
-                                : speciesRoll < 0.85
-                                    ? 'pine'
-                                    : 'shrub';
-                }
-
-                generatedTrees.push({
-                    id: `tree_${chunkKey}_${i}`,
-                    x: lx,
-                    y: wy - 0.04,
-                    z: lz,
-                    scale,
-                    rotY: hash2D(cx, cz, 431 + i) * Math.PI * 2,
-                    species,
-                });
-                registerOccupied(wx, wz, 0.85 * scale);
-
-                if (species !== 'shrub') {
-                    generatedColliders.push({
-                        id: `col_tree_${chunkKey}_${i}`,
-                        x: wx,
-                        y: wy,
-                        z: wz,
-                        radius: 0.42 * scale,
-                        height: 4.2 * scale,
-                        blocksCamera: true,
-                    });
-                }
-            }
-
-            // E. Biome-Modulated Boulders, Mossy Rocks & Fallen Logs
-            const maxRockSlots = 16;
-            for (let r = 0; r < maxRockSlots; r++) {
-                const rSeed = hash2D(cx * 19 + r, cz * 29 + r, 303);
-                const lx = (hash2D(cx, cz, r * 17 + 70) - 0.5) * (CHUNK_SIZE - 3);
-                const lz = (hash2D(cx, cz, r * 17 + 71) - 0.5) * (CHUNK_SIZE - 3);
-                const wx = worldOriginX + lx;
-                const wz = worldOriginZ + lz;
-
-                const sample = getBiomeSampleAt(wx, wz);
-                if (rSeed > sample.config.rockDensity) continue;
-                if (!isPositionFree(wx, wz, 1.0, 2.6)) continue;
-
-                const wy = getGardenTerrainHeight(wx, wz);
-                const isFallenLog =
-                    (sample.primary === 'evergreen_forest' ||
-                        sample.primary === 'explorers_rest') &&
-                    r % 4 === 0;
-
-                if (isFallenLog) {
-                    const logScale = 0.75 + rSeed * 0.45;
-                    generatedProps.push({
-                        id: `log_${chunkKey}_${r}`,
-                        x: lx,
-                        y: wy + 0.08,
-                        z: lz,
-                        scale: [logScale, logScale, logScale],
-                        rot: [
-                            Math.PI / 2 + (rSeed - 0.5) * 0.12,
-                            rSeed * Math.PI,
-                            (rSeed - 0.5) * 0.15,
-                        ],
-                        type: 'log',
-                        color: THEME.colors.barkBase,
-                    });
-                    registerOccupied(wx, wz, 1.1);
-                } else {
-                    const sizeMult =
-                        sample.primary === 'ancient_ruins' ? 1.25 : 1.0;
-                    const sx = (0.6 + rSeed * 0.85) * sizeMult;
-                    const sy =
-                        (0.5 + hash2D(cx + r, cz, 521) * 0.65) * sizeMult;
-                    const sz =
-                        (0.6 + hash2D(cx, cz + r, 523) * 0.85) * sizeMult;
-
-                    generatedProps.push({
-                        id: `rock_${chunkKey}_${r}`,
-                        x: lx,
-                        y: wy - 0.12,
-                        z: lz,
-                        scale: [sx, sy, sz],
-                        rot: [0, rSeed * Math.PI * 2, 0],
-                        type:
-                            sample.primary === 'evergreen_forest' || r % 3 === 0
-                                ? 'mossy_rock'
-                                : 'rock',
-                        color:
-                            r % 2 === 0
-                                ? THEME.colors.stoneBase
-                                : THEME.colors.stoneSunlit,
-                    });
-                    registerOccupied(wx, wz, 0.75 * sx);
-
-                    if (sx > 0.82) {
-                        generatedColliders.push({
-                            id: `col_rock_${chunkKey}_${r}`,
-                            x: wx,
-                            y: wy,
-                            z: wz,
-                            radius: 0.68 * sx,
-                            height: 1.1 * sy,
-                            blocksCamera: sx > 1.1,
-                        });
-                    }
-                }
-            }
-
-            // F. Instanced Grass & Wildflowers Scaled by Biome Flower Density
-            const grassCount = 70;
-            for (let g = 0; g < grassCount; g++) {
-                const lx = (hash2D(cx, cz, g * 3 + 500) - 0.5) * CHUNK_SIZE;
-                const lz = (hash2D(cx, cz, g * 3 + 501) - 0.5) * CHUNK_SIZE;
-                const wx = worldOriginX + lx;
-                const wz = worldOriginZ + lz;
-
-                // Keep the stone trail completely clear of foliage
-                if (getDistanceToNearestPath(wx, wz) < 2.6) continue;
-
-                const sample = getBiomeSampleAt(wx, wz);
-                const wy = getGardenTerrainHeight(wx, wz);
-                const s = 0.72 + hash2D(cx, cz, g * 3 + 502) * 0.62;
-
-                dummy.position.set(lx, wy + 0.015, lz);
-                dummy.rotation.set(
-                    (seededRandom(g * 7) - 0.5) * 0.1,
-                    seededRandom(g * 13) * Math.PI * 2,
-                    (seededRandom(g * 19) - 0.5) * 0.1
-                );
-                dummy.scale.set(s, s, s);
-                dummy.updateMatrix();
-                if (g % 6 === 0) {
-                    bushMatrices.push(dummy.matrix.clone());
-                } else {
-                    grassMatrices.push(dummy.matrix.clone());
-                }
-
-                const flowerRoll = hash2D(cx + g, cz, 601);
-                if (flowerRoll < sample.config.flowerDensity * 0.28) {
-                    dummy.position.set(lx, wy + 0.3 * s, lz);
-                    dummy.rotation.set(
-                        0.2,
-                        seededRandom(g * 31) * Math.PI * 2,
-                        0
-                    );
-                    dummy.scale.set(s * 0.9, s * 0.9, s * 0.9);
-                    dummy.updateMatrix();
-                    flowerMatrices.push(dummy.matrix.clone());
-                }
-            }
-
-            return {
-                trees: generatedTrees,
-                propsList: generatedProps,
-                biomeLandmarks: generatedLandmarks,
-                grassTransforms: grassMatrices,
-                bushTransforms: bushMatrices,
-                flowerTransforms: flowerMatrices,
-                colliders: generatedColliders,
-            };
-        }, [cx, cz, chunkKey, worldOriginX, worldOriginZ]);
-
-        // Static vegetation and props are collapsed into instanced batches once
-        const treeBatches = useMemo(() => buildTreeBatches(trees), [trees]);
-        const propBatches = useMemo(
-            () => buildPropBatches(propsList),
-            [propsList]
-        );
-
-        // GLB trees and ponds are drawn with instanced fields: one draw call per
-        // asset per chunk instead of a cloned scene graph for every instance.
-        const glbFieldTransforms = useMemo(() => {
-            const groups: Record<string, THREE.Matrix4[]> = {
-                old_tree_v1_glb: [],
-                old_tree_v2_glb: [],
-                tall_tree_v1_glb: [],
-                tall_tree_v2_glb: [],
-                pond_glb: [],
-            };
-            const scratch = new THREE.Object3D();
-
-            for (const lm of biomeLandmarks) {
-                const bucket = groups[lm.kind];
-                if (!bucket) continue;
-                scratch.position.set(lm.x, lm.y, lm.z);
-                scratch.rotation.set(0, lm.rotY, 0);
-                scratch.scale.setScalar(lm.scale);
-                scratch.updateMatrix();
-                bucket.push(scratch.matrix.clone());
-            }
-
-            return groups;
-        }, [biomeLandmarks]);
+        const detailGroupRef = useRef<THREE.Group>(null);
+        const midGlbGroupRef = useRef<THREE.Group>(null);
 
         useLayoutEffect(() => {
-            if (flowerMeshRef.current) {
-                flowerTransforms.forEach((mat, idx) => {
-                    flowerMeshRef.current!.setMatrixAt(idx, mat);
-                });
-                flowerMeshRef.current.instanceMatrix.needsUpdate = true;
-            }
             onChunkReady?.(`${cx}_${cz}`);
-        }, [flowerTransforms, onChunkReady, cx, cz]);
+        }, [onChunkReady, cx, cz]);
 
         useEffect(() => {
             const colKey = `${cx}_${cz}`;
-            collisionManager.registerChunk(colKey, colliders);
+            collisionManager.registerChunk(colKey, data.colliders);
             return () => {
                 collisionManager.unregisterChunk(colKey);
-                terrainGeo.dispose();
             };
-        }, [cx, cz, colliders, terrainGeo]);
-
-        const customTerrainMaterial = useMemo(() => {
-            const mat = new THREE.MeshStandardMaterial({
-                vertexColors: true,
-                roughness: 0.92,
-                metalness: 0.02,
-                flatShading: true,
-            });
-
-            mat.onBeforeCompile = (shader) => {
-                shader.uniforms.uMemoryCenter = {
-                    value: new THREE.Vector3(0, 0, 0),
-                };
-                shader.uniforms.uRadianceRadius = { value: 7.5 };
-                shader.uniforms.uRadianceStrength = { value: 0.0 };
-
-                mat.userData.shader = shader;
-
-                shader.fragmentShader =
-                    `
-        uniform vec3 uMemoryCenter;
-        uniform float uRadianceRadius;
-        uniform float uRadianceStrength;
-        varying vec3 vWorldPos;
-      ` + shader.fragmentShader;
-
-                shader.fragmentShader = shader.fragmentShader.replace(
-                    '#include <color_fragment>',
-                    `
-        #include <color_fragment>
-        float memDist = distance(vWorldPos, uMemoryCenter);
-        float radianceFactor = clamp(1.0 - (memDist / uRadianceRadius), 0.0, 1.0);
-        radianceFactor = smoothstep(0.0, 1.0, radianceFactor) * uRadianceStrength;
-        
-        vec3 goldenGlow = vec3(1.15, 0.98, 0.65);
-        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * goldenGlow + vec3(0.12, 0.08, 0.02), radianceFactor * 0.65);
-        `
-                );
-
-                shader.vertexShader =
-                    `
-        varying vec3 vWorldPos;
-      ` + shader.vertexShader;
-
-                shader.vertexShader = shader.vertexShader.replace(
-                    '#include <worldpos_vertex>',
-                    `
-        #include <worldpos_vertex>
-        vWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-        `
-                );
-            };
-
-            return mat;
-        }, []);
+        }, [cx, cz, data.colliders]);
 
         useFrame(() => {
-            if (terrainMeshRef.current) {
-                const mat = terrainMeshRef.current
-                    .material as THREE.MeshStandardMaterial;
-                const shader = mat.userData.shader;
-                if (shader) {
-                    const [mx, my, mz] = playerTelemetry.nearestMemoryPosition;
-                    shader.uniforms.uMemoryCenter.value.set(mx, my, mz);
-                    shader.uniforms.uRadianceStrength.value =
-                        playerTelemetry.nearestMemoryRadiance;
-                }
+            const dx = playerTelemetry.position[0] - worldOriginX;
+            const dz = playerTelemetry.position[2] - worldOriginZ;
+            const distSq = dx * dx + dz * dz;
+            if (detailGroupRef.current) {
+                detailGroupRef.current.visible = distSq < 54 * 54;
+            }
+            if (midGlbGroupRef.current) {
+                midGlbGroupRef.current.visible = distSq < 88 * 88;
             }
         });
+
+        const {
+            terrainGeo,
+            treeBatches,
+            propBatches,
+            heroLandmarks,
+            glbFieldTransforms,
+        } = data;
 
         return (
             <group position={[worldOriginX, 0, worldOriginZ]}>
                 <mesh
-                    ref={terrainMeshRef}
                     geometry={terrainGeo}
-                    material={customTerrainMaterial}
+                    material={sharedMaterial}
                     receiveShadow
                 />
 
-                {/* Biome-Composed GLB Landmarks & Props */}
-                {biomeLandmarks.map((lm) => {
+                {heroLandmarks.map((lm) => {
                     const pos: [number, number, number] = [lm.x, lm.y, lm.z];
                     switch (lm.kind) {
                         case 'huge_sakura_glb':
@@ -1344,51 +1343,6 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
                         case 'huge_green_glb':
                             return (
                                 <MonumentalEvergreenTreeGLB
-                                    key={lm.id}
-                                    position={pos}
-                                    rotationY={lm.rotY}
-                                    scale={lm.scale}
-                                />
-                            );
-                        case 'cottage_glb':
-                            return (
-                                <CozyStorybookCottage
-                                    key={lm.id}
-                                    position={pos}
-                                    rotationY={lm.rotY}
-                                    scale={lm.scale}
-                                />
-                            );
-                        case 'campsite_glb':
-                            return (
-                                <ExplorerCampsite
-                                    key={lm.id}
-                                    position={pos}
-                                    rotationY={lm.rotY}
-                                    scale={lm.scale}
-                                />
-                            );
-                        case 'cart_glb':
-                            return (
-                                <WoodenCargoCart
-                                    key={lm.id}
-                                    position={pos}
-                                    rotationY={lm.rotY}
-                                    scale={lm.scale}
-                                />
-                            );
-                        case 'noticeboard_glb':
-                            return (
-                                <WoodenMemoryNoticeboard
-                                    key={lm.id}
-                                    position={pos}
-                                    rotationY={lm.rotY}
-                                    scale={lm.scale}
-                                />
-                            );
-                        case 'lamp_glb':
-                            return (
-                                <WoodenLanternPost
                                     key={lm.id}
                                     position={pos}
                                     rotationY={lm.rotY}
@@ -1413,40 +1367,12 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
                                     scale={lm.scale}
                                 />
                             );
-                        case 'rock_pillar_glb':
+                        case 'bridge_arched':
                             return (
-                                <StandingStonePillar
+                                <WoodenArchedBridge
                                     key={lm.id}
                                     position={pos}
                                     rotationY={lm.rotY}
-                                    scale={lm.scale}
-                                />
-                            );
-                        case 'flower_v1_glb':
-                            return (
-                                <MemoryFlowerGLB
-                                    key={lm.id}
-                                    position={pos}
-                                    rotationY={lm.rotY}
-                                    scale={lm.scale}
-                                    variant={1}
-                                />
-                            );
-                        case 'flower_v2_glb':
-                            return (
-                                <MemoryFlowerGLB
-                                    key={lm.id}
-                                    position={pos}
-                                    rotationY={lm.rotY}
-                                    scale={lm.scale}
-                                    variant={2}
-                                />
-                            );
-                        case 'mushroom_cluster':
-                            return (
-                                <SpottedMushroomCluster
-                                    key={lm.id}
-                                    position={pos}
                                     scale={lm.scale}
                                 />
                             );
@@ -1463,80 +1389,107 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
                     <ChunkInstancedBatch key={batch.key} batch={batch} />
                 ))}
 
-                <Suspense fallback={null}>
-                    {glbFieldTransforms.old_tree_v1_glb.length > 0 && (
-                        <InstancedGLBField
-                            url={GLB_ASSET_PATHS.oldTreeV1}
-                            targetHeight={7.2}
-                            transforms={glbFieldTransforms.old_tree_v1_glb}
-                        />
-                    )}
-                    {glbFieldTransforms.old_tree_v2_glb.length > 0 && (
-                        <InstancedGLBField
-                            url={GLB_ASSET_PATHS.oldTreeV2}
-                            targetHeight={7.2}
-                            transforms={glbFieldTransforms.old_tree_v2_glb}
-                        />
-                    )}
-                    {glbFieldTransforms.tall_tree_v1_glb.length > 0 && (
-                        <InstancedGLBField
-                            url={GLB_ASSET_PATHS.tallTreeV1}
-                            targetHeight={9.6}
-                            transforms={glbFieldTransforms.tall_tree_v1_glb}
-                        />
-                    )}
-                    {glbFieldTransforms.tall_tree_v2_glb.length > 0 && (
-                        <InstancedGLBField
-                            url={GLB_ASSET_PATHS.tallTreeV2}
-                            targetHeight={9.6}
-                            transforms={glbFieldTransforms.tall_tree_v2_glb}
-                        />
-                    )}
-                    {glbFieldTransforms.pond_glb.length > 0 && (
-                        <InstancedGLBField
-                            url={GLB_ASSET_PATHS.pond}
-                            targetHeight={3.6}
-                            transforms={glbFieldTransforms.pond_glb}
-                        />
-                    )}
-                </Suspense>
-
-                {grassTransforms.length > 0 && (
+                <group ref={midGlbGroupRef}>
                     <Suspense fallback={null}>
-                        <InstancedGLBField
-                            url={GLB_ASSET_PATHS.grass}
-                            targetHeight={0.26}
-                            transforms={grassTransforms}
-                        />
+                        {glbFieldTransforms.old_tree_v1_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.oldTreeV1}
+                                targetHeight={7.2}
+                                transforms={glbFieldTransforms.old_tree_v1_glb}
+                            />
+                        )}
+                        {glbFieldTransforms.old_tree_v2_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.oldTreeV2}
+                                targetHeight={7.2}
+                                transforms={glbFieldTransforms.old_tree_v2_glb}
+                            />
+                        )}
+                        {glbFieldTransforms.tall_tree_v1_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.tallTreeV1}
+                                targetHeight={9.6}
+                                transforms={glbFieldTransforms.tall_tree_v1_glb}
+                            />
+                        )}
+                        {glbFieldTransforms.tall_tree_v2_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.tallTreeV2}
+                                targetHeight={9.6}
+                                transforms={glbFieldTransforms.tall_tree_v2_glb}
+                            />
+                        )}
+                        {glbFieldTransforms.pond_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.pond}
+                                targetHeight={3.6}
+                                transforms={glbFieldTransforms.pond_glb}
+                                sinkOffset={-0.05}
+                            />
+                        )}
+                        {glbFieldTransforms.rock_pillar_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.rockPillar}
+                                targetHeight={3.1}
+                                transforms={glbFieldTransforms.rock_pillar_glb}
+                                sinkOffset={-0.08}
+                            />
+                        )}
+                        {glbFieldTransforms.tent_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.tent}
+                                targetHeight={2.35}
+                                transforms={glbFieldTransforms.tent_glb}
+                                sinkOffset={-0.06}
+                            />
+                        )}
+                        {glbFieldTransforms.cart_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.woodenVehicle}
+                                targetHeight={1.65}
+                                transforms={glbFieldTransforms.cart_glb}
+                                sinkOffset={-0.05}
+                            />
+                        )}
+                        {glbFieldTransforms.noticeboard_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.noticeBoard}
+                                targetHeight={2.35}
+                                transforms={glbFieldTransforms.noticeboard_glb}
+                                sinkOffset={-0.06}
+                            />
+                        )}
+                        {glbFieldTransforms.lamp_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.streetLamp}
+                                targetHeight={2.85}
+                                transforms={glbFieldTransforms.lamp_glb}
+                                sinkOffset={-0.06}
+                            />
+                        )}
                     </Suspense>
-                )}
+                </group>
 
-                {bushTransforms.length > 0 && (
+                <group ref={detailGroupRef}>
                     <Suspense fallback={null}>
-                        <InstancedGLBField
-                            url={GLB_ASSET_PATHS.grassBush}
-                            targetHeight={1.0}
-                            transforms={bushTransforms}
-                        />
+                        {glbFieldTransforms.flower_v1_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.flowerV1}
+                                targetHeight={0.58}
+                                transforms={glbFieldTransforms.flower_v1_glb}
+                                sinkOffset={-0.03}
+                            />
+                        )}
+                        {glbFieldTransforms.flower_v2_glb.length > 0 && (
+                            <InstancedGLBField
+                                url={GLB_ASSET_PATHS.flowerV2}
+                                targetHeight={0.58}
+                                transforms={glbFieldTransforms.flower_v2_glb}
+                                sinkOffset={-0.03}
+                            />
+                        )}
                     </Suspense>
-                )}
-
-                {flowerTransforms.length > 0 && (
-                    <instancedMesh
-                        ref={flowerMeshRef}
-                        args={[
-                            SHARED_GEOMETRIES.flowerHead,
-                            undefined,
-                            flowerTransforms.length,
-                        ]}
-                    >
-                        <meshStandardMaterial
-                            color={THEME.colors.flowerPetal}
-                            roughness={0.7}
-                            flatShading
-                        />
-                    </instancedMesh>
-                )}
+                </group>
             </group>
         );
     }
@@ -1552,6 +1505,17 @@ export const ChunkedTerrain: React.FC = () => {
     );
 
     const readyChunks = useRef(new Set<string>());
+    const lastBiomeRef = useRef<BiomeType>('memory_sanctuary');
+    const [, setStreamTick] = useState(0);
+
+    // Pre-build initial 3x3 inner grid immediately so spawn & surroundings are ready on frame 1
+    useMemo(() => {
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dz = -1; dz <= 1; dz++) {
+                buildChunkData(dx, dz, worldSeed);
+            }
+        }
+    }, [worldSeed]);
 
     const handleChunkReady = (key: string) => {
         readyChunks.current.add(key);
@@ -1560,6 +1524,21 @@ export const ChunkedTerrain: React.FC = () => {
         }
     };
 
+    const desiredActiveCoords = useMemo(() => {
+        const list: Array<[number, number]> = [];
+        for (let dx = -ACTIVE_CHUNK_RADIUS; dx <= ACTIVE_CHUNK_RADIUS; dx++) {
+            for (let dz = -ACTIVE_CHUNK_RADIUS; dz <= ACTIVE_CHUNK_RADIUS; dz++) {
+                list.push([activeChunkCoord[0] + dx, activeChunkCoord[1] + dz]);
+            }
+        }
+        list.sort(
+            (a, b) =>
+                Math.hypot(a[0] - activeChunkCoord[0], a[1] - activeChunkCoord[1]) -
+                Math.hypot(b[0] - activeChunkCoord[0], b[1] - activeChunkCoord[1])
+        );
+        return list;
+    }, [activeChunkCoord]);
+
     useFrame(() => {
         const px = playerTelemetry.position[0];
         const pz = playerTelemetry.position[2];
@@ -1567,32 +1546,52 @@ export const ChunkedTerrain: React.FC = () => {
         const cz = Math.round(pz / CHUNK_SIZE);
         if (cx !== activeChunkCoord[0] || cz !== activeChunkCoord[1]) {
             setActiveChunkCoord([cx, cz]);
+            evictOldChunksIfNeeded([cx, cz], worldSeed);
         }
-        const liveBiome = getBiomeSampleAt(px, pz).primary;
-        setCurrentBiome(liveBiome);
-    });
 
-    const visibleChunks = useMemo(() => {
-        const coords: Array<[number, number]> = [];
-        for (let dx = -ACTIVE_CHUNK_RADIUS; dx <= ACTIVE_CHUNK_RADIUS; dx++) {
-            for (let dz = -ACTIVE_CHUNK_RADIUS; dz <= ACTIVE_CHUNK_RADIUS; dz++) {
-                coords.push([activeChunkCoord[0] + dx, activeChunkCoord[1] + dz]);
+        const liveBiome = getBiomeSampleAt(px, pz).primary;
+        if (liveBiome !== lastBiomeRef.current) {
+            lastBiomeRef.current = liveBiome;
+            setCurrentBiome(liveBiome);
+        }
+
+        const mat = getSharedTerrainMaterial();
+        const shader = mat.userData.shader;
+        if (shader) {
+            const [mx, my, mz] = playerTelemetry.nearestMemoryPosition;
+            shader.uniforms.uMemoryCenter.value.set(mx, my, mz);
+            shader.uniforms.uRadianceStrength.value =
+                playerTelemetry.nearestMemoryRadiance;
+        }
+
+        // Progressive background chunk builder (max 1 chunk per frame)
+        for (let i = 0; i < desiredActiveCoords.length; i++) {
+            const [qcx, qcz] = desiredActiveCoords[i];
+            const key = `${qcx}_${qcz}_${worldSeed}`;
+            if (!CHUNK_DATA_CACHE.has(key)) {
+                buildChunkData(qcx, qcz, worldSeed);
+                setStreamTick((t) => t + 1);
+                break;
             }
         }
-        return coords;
-    }, [activeChunkCoord]);
+    });
 
     return (
         <group>
-            {visibleChunks.map(([cx, cz]) => (
-                <TerrainChunk
-                    key={`${cx}_${cz}_${worldSeed}`}
-                    cx={cx}
-                    cz={cz}
-                    worldSeed={worldSeed}
-                    onChunkReady={handleChunkReady}
-                />
-            ))}
+            {desiredActiveCoords.map(([cx, cz]) => {
+                const key = `${cx}_${cz}_${worldSeed}`;
+                const data = CHUNK_DATA_CACHE.get(key);
+                if (!data) return null;
+                return (
+                    <TerrainChunk
+                        key={key}
+                        cx={cx}
+                        cz={cz}
+                        data={data}
+                        onChunkReady={handleChunkReady}
+                    />
+                );
+            })}
         </group>
     );
 };

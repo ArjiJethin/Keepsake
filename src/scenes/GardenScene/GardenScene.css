@@ -5,7 +5,7 @@
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: linear-gradient(180deg, #8e7b9b 0%, #d8a994 60%, #e8b49a 100%);
+  background: linear-gradient(180deg, #786a88 0%, #b58d98 56%, #ecc2a8 100%);
 }
 
 .garden-canvas-wrapper::after {
@@ -15,7 +15,8 @@
   pointer-events: none;
   background: radial-gradient(
     circle at center,
-    transparent 62%,
-    rgba(45, 31, 38, 0.32) 100%
+    transparent 65%,
+    rgba(38, 27, 33, 0.24) 100%
   );
 }
+

@@ -19,40 +19,23 @@ export interface FemaleWandererGLBProps {
     runSpeedRef: number;
 }
 
-/**
- * Native height of KeepSakeFemale-v2-animated.glb is ~0.9787m
- * (min Y = -0.489288, max Y = +0.489380).
- * Scaling by 1.78 yields a 1.742m tall character.
- *
- * Grounding calibration:
- * In Walk_2 and Sprint, the pelvis Z (world Y) sits at 0.508..0.527 vs 0.54094 in
- * bind pose, and the boot sole bevel + low-poly terrain facet interpolation
- * otherwise leave the character visually hovering ~5.8cm above the grass.
- * SOLE_CONTACT_SINK lowers the character so the flat boot soles plant firmly on the terrain.
- */
 const CHARACTER_SCALE = 1.78;
 const NATIVE_MIN_Y = -0.489288330078125;
 const SOLE_CONTACT_SINK = -0.058;
 const GROUND_FOOT_OFFSET = -NATIVE_MIN_Y * CHARACTER_SCALE + SOLE_CONTACT_SINK;
 
 /**
- * Physical stride calibration derived from inspecting KeepSakeFemale-v2-animated.glb:
- * - Scaled leg length = (0.190 + 0.222 + 0.090) * 1.78 = 0.8935m.
- * - Walk_2 (duration 1.1333s, 2 steps) covers ~1.92m per cycle -> natural 1x speed = 1.70 m/s.
- * - Sprint (duration 0.8333s, 2 steps) covers ~3.45m per cycle -> natural 1x speed = 4.14 m/s.
- * Using exact cycle stride distances ensures 1:1 foot-to-ground lock with zero skating.
+ * Physical stride calibration derived from KeepSakeFemale-v2-animated.glb:
+ * - Walk_2 (duration 1.1333s, 2 steps) covers ~1.92m per cycle.
+ * - Sprint (duration 0.8333s, 2 steps) covers ~3.65m per full extended sprint stride.
+ * Using exact cycle stride distances with an uncapped upper clamp up to 2.25x
+ * ensures 1:1 foot-to-ground lock at the faster 8.45 m/s sprint speed with zero skating.
  */
 const WALK_CYCLE_DISTANCE = 1.92;
-const SPRINT_CYCLE_DISTANCE = 3.45;
+const SPRINT_CYCLE_DISTANCE = 3.65;
 
-// Cache sanitized animation clips so switching characters never re-allocates tracks
 const sanitizedClipCache = new Map<string, THREE.AnimationClip>();
 
-/**
- * Clones an AnimationClip and strips root-motion translation tracks that would
- * otherwise fight the existing PlayerCharacter physics & jump controller,
- * and neutralizes vertical pelvis hover offset in locomotion clips.
- */
 function getOrPrepareAnimationClip(
     originalClip: THREE.AnimationClip,
     mode: 'walk' | 'sprint' | 'jump'
@@ -66,7 +49,6 @@ function getOrPrepareAnimationClip(
     const bindPelvisZ = 0.5409435444687573;
 
     for (const track of clip.tracks) {
-        // Strip root bone position track on Jump_2_RM so physics controls position
         if (mode === 'jump' && track.name.endsWith('root.position')) {
             continue;
         }
@@ -76,7 +58,6 @@ function getOrPrepareAnimationClip(
             const values = clonedTrack.values;
 
             if (mode === 'jump') {
-                // Keep 25% of hip tuck without launching mesh away from physics collider
                 for (let i = 0; i < values.length; i += 3) {
                     values[i] = values[i] * 0.25;
                     values[i + 1] = values[i + 1] * 0.25;
@@ -84,7 +65,6 @@ function getOrPrepareAnimationClip(
                         bindPelvisZ + (values[i + 2] - bindPelvisZ) * 0.25;
                 }
             } else {
-                // In Walk_2 & Sprint, keep natural gait bob around the grounded pelvis height
                 let minZ = Infinity;
                 for (let i = 2; i < values.length; i += 3) {
                     if (values[i] < minZ) minZ = values[i];
@@ -110,7 +90,6 @@ function getOrPrepareAnimationClip(
 
 export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
     () => {
-        // Enable MeshoptDecoder & DRACOLoader automatically if the GLB is compressed
         const gltf = useGLTF(
             FEMALE_WANDERER_GLB_PATH,
             true,
@@ -123,7 +102,6 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
         const modelContainerRef = useRef<THREE.Group>(null);
         const lanternLightRef = useRef<THREE.PointLight>(null);
 
-        // Clone the skinned scene graph once and optimize texture sampling for browser GPUs
         const { clonedScene, footOffset } = useMemo(() => {
             const sceneClone = cloneSkeleton(gltf.scene);
 
@@ -151,7 +129,6 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
                                     stdMat.roughness
                                 );
 
-                                // Ensure crisp anisotropic mipmap filtering on character textures
                                 const texList = [
                                     stdMat.map,
                                     stdMat.normalMap,
@@ -261,7 +238,6 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
             };
         }, [clonedScene, gltf.animations]);
 
-        // Real-time 60fps+ animation synchronization directly from playerTelemetry (zero React state lag)
         useFrame((_, rawDelta) => {
             const delta = Math.min(rawDelta, 0.05);
             const mixer = mixerRef.current;
@@ -274,7 +250,6 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
                 const isGrounded = playerTelemetry.isGrounded;
                 const moveState = playerTelemetry.moveState;
 
-                // 1. Handle Jump Trigger & Landing Transitions
                 if (!isGrounded) {
                     if (prevGroundedRef.current && Jump_2_RM && !isJumpActiveRef.current) {
                         isJumpActiveRef.current = true;
@@ -303,26 +278,23 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
                         Jump_2_RM.fadeOut(0.16);
                     }
 
-                    // 2. Smooth Continuous Walk <-> Sprint <-> Stop Blending
                     let targetWalkW = 0;
                     let targetSprintW = 0;
 
                     if (liveSpeed > 0.08) {
-                        // Blend smoothly from Walk_2 into Sprint as speed exceeds walking pace
                         const sprintBlend =
                             moveState === 'run'
                                 ? THREE.MathUtils.smoothstep(
                                     liveSpeed,
-                                    2.9,
-                                    4.6
+                                    2.85,
+                                    4.8
                                 )
                                 : THREE.MathUtils.smoothstep(
                                     liveSpeed,
-                                    3.4,
-                                    5.2
+                                    3.2,
+                                    5.4
                                 );
 
-                        // Ramp weight in smoothly at very low speeds (0.08 .. 0.45 m/s) to prevent foot snap
                         const locomotionEnvelope = THREE.MathUtils.smoothstep(
                             liveSpeed,
                             0.06,
@@ -333,7 +305,7 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
                         targetSprintW = sprintBlend * locomotionEnvelope;
                     }
 
-                    const blendRate = liveSpeed > 0.08 ? 11.0 : 9.5;
+                    const blendRate = liveSpeed > 0.08 ? 11.5 : 9.5;
                     walkWeightRef.current = THREE.MathUtils.lerp(
                         walkWeightRef.current,
                         targetWalkW,
@@ -358,23 +330,20 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
 
                 prevGroundedRef.current = isGrounded;
 
-                // 3. Apply Calibrated Stride-Locked Playback Speeds
                 if (Walk_2) {
                     Walk_2.enabled = true;
                     Walk_2.setEffectiveWeight(walkWeightRef.current);
 
                     const walkClipDur = Walk_2.getClip().duration || 1.133333;
                     if (liveSpeed > 0.08 && isGrounded) {
-                        // Exact physical stride formula: timeScale = (speed * clipDuration) / cycleStrideDistance
                         const exactWalkRate =
                             (liveSpeed * walkClipDur) / WALK_CYCLE_DISTANCE;
                         Walk_2.timeScale = THREE.MathUtils.clamp(
                             exactWalkRate,
                             0.25,
-                            1.65
+                            1.85
                         );
                     } else {
-                        // Settle legs smoothly as character comes to a stop
                         Walk_2.timeScale = THREE.MathUtils.lerp(
                             Walk_2.timeScale,
                             0,
@@ -390,13 +359,12 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
                     const sprintClipDur =
                         Sprint.getClip().duration || 0.833333;
                     if (liveSpeed > 0.2 && isGrounded) {
-                        // Exact physical sprint stride formula
                         const exactSprintRate =
                             (liveSpeed * sprintClipDur) / SPRINT_CYCLE_DISTANCE;
                         Sprint.timeScale = THREE.MathUtils.clamp(
                             exactSprintRate,
                             0.55,
-                            1.45
+                            2.25
                         );
                     } else {
                         Sprint.timeScale = THREE.MathUtils.lerp(
@@ -410,7 +378,6 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
                 mixer.update(delta);
             }
 
-            // 5. Signature Keepsake Memory Lantern Proximity Glow
             if (lanternLightRef.current) {
                 const memDist = playerTelemetry.nearestMemoryDistance;
                 const proximityBoost =
@@ -433,7 +400,6 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
                     position={[0, footOffset, 0]}
                 />
 
-                {/* Warm Keepsake Explorer Aura Light (Brightens near Memory Pedestals) */}
                 <pointLight
                     ref={lanternLightRef}
                     position={[0.22, 0.95, -0.25]}
@@ -447,10 +413,6 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
     }
 );
 
-/**
- * Progressive non-blocking preload: defer GLB fetch by 250ms so the initial
- * calligraphic loading screen paints immediately without main-thread contention.
- */
 if (typeof window !== 'undefined') {
     window.setTimeout(() => {
         useGLTF.preload(FEMALE_WANDERER_GLB_PATH, true, true, (loader) => {
@@ -458,3 +420,4 @@ if (typeof window !== 'undefined') {
         });
     }, 250);
 }
+

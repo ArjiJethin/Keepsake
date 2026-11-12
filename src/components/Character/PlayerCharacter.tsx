@@ -18,28 +18,17 @@ import { MaleWandererGLB } from './MaleWandererGLB';
 const GRAVITY = -22.0;
 const JUMP_VELOCITY = 7.6;
 
-/**
- * Movement speeds calibrated to match the physical stride length of
- * KeepSakeFemale-v2-animated.glb and KeepSakeMale-v2-animated.glb
- * while feeling responsive and fluid across the garden.
- */
 const WALK_SPEED = 2.65;
-const RUN_SPEED = 5.85;
-const ACCELERATION = 10.5;
-const DECELERATION = 13.5;
-const TURN_SMOOTHING = 13.0;
+const RUN_SPEED = 8.45;
+const ACCELERATION = 11.5;
+const DECELERATION = 14.0;
+const TURN_SMOOTHING = 13.5;
 const STOP_SPEED_DEADZONE = 0.035;
 
-// Pre-allocated scratch vectors to avoid per-frame garbage collection
 const _forwardVec = new THREE.Vector3();
 const _rightVec = new THREE.Vector3();
 const _moveDir = new THREE.Vector3();
 
-/**
- * Samples terrain height across the character's center and left/right foot
- * stance positions so the character's feet never float above or sink into
- * angled low-poly terrain facets.
- */
 function getFootContactTerrainHeight(
     x: number,
     z: number,
@@ -59,7 +48,6 @@ function getFootContactTerrainHeight(
         z - sinR * footSpread
     );
 
-    // Blend center height with the supporting foot contact plane
     const avgFootH = (leftFootH + rightFootH) * 0.5;
     return centerH * 0.55 + avgFootH * 0.45;
 }
@@ -187,6 +175,9 @@ export const PlayerCharacter: React.FC = () => {
 
         const onBlur = () => {
             keys.current = {};
+            playerTelemetry.joystick.x = 0;
+            playerTelemetry.joystick.y = 0;
+            playerTelemetry.joystick.active = false;
         };
 
         window.addEventListener('keydown', onKeyDown);
@@ -205,36 +196,57 @@ export const PlayerCharacter: React.FC = () => {
 
         const canMove = phase === 'exploring' && activeModal === 'none';
 
-        // 1. Camera-Relative Movement Input
-        let inputForward = 0;
-        let inputRight = 0;
+        // 1. Unified Camera-Relative Movement Input (Keyboard + Mobile Touch Joystick)
+        let kbForward = 0;
+        let kbRight = 0;
         if (canMove) {
             if (keys.current['KeyW'] || keys.current['ArrowUp'])
-                inputForward += 1;
+                kbForward += 1;
             if (keys.current['KeyS'] || keys.current['ArrowDown'])
-                inputForward -= 1;
+                kbForward -= 1;
             if (keys.current['KeyD'] || keys.current['ArrowRight'])
-                inputRight += 1;
+                kbRight += 1;
             if (keys.current['KeyA'] || keys.current['ArrowLeft'])
-                inputRight -= 1;
+                kbRight -= 1;
         }
 
-        const inputLen = Math.hypot(inputForward, inputRight);
-        const isSprinting =
+        const joyActive = canMove && playerTelemetry.joystick.active;
+        const joyRight = joyActive ? playerTelemetry.joystick.x : 0;
+        const joyForward = joyActive ? playerTelemetry.joystick.y : 0;
+
+        // Combine inputs predictably, clamping magnitude to 1.0
+        const rawForward = kbForward + joyForward;
+        const rawRight = kbRight + joyRight;
+        const rawMag = Math.hypot(rawForward, rawRight);
+        const inputLen = Math.min(1.0, rawMag);
+
+        const kbSprint =
             Boolean(keys.current['ShiftLeft'] || keys.current['ShiftRight']) &&
-            inputLen > 0;
-        const targetSpeed =
-            inputLen > 0 ? (isSprinting ? RUN_SPEED : WALK_SPEED) : 0;
+            Math.hypot(kbForward, kbRight) > 0;
+        const joySprint = joyActive && Math.hypot(joyRight, joyForward) > 0.88;
+        const isSprinting = kbSprint || joySprint;
+
+        let targetSpeed = 0;
+        if (inputLen > 0.01) {
+            if (isSprinting) {
+                targetSpeed = RUN_SPEED;
+            } else if (joyActive && Math.hypot(kbForward, kbRight) === 0) {
+                // Smooth analog speed modulation on mobile joystick
+                targetSpeed = WALK_SPEED * THREE.MathUtils.clamp(inputLen * 1.15, 0.25, 1.0);
+            } else {
+                targetSpeed = WALK_SPEED;
+            }
+        }
 
         const camYaw = playerTelemetry.cameraYaw;
         _forwardVec.set(-Math.sin(camYaw), 0, -Math.cos(camYaw));
         _rightVec.set(Math.cos(camYaw), 0, -Math.sin(camYaw));
 
         _moveDir.set(0, 0, 0);
-        if (inputLen > 0.001) {
+        if (rawMag > 0.001) {
             _moveDir
-                .addScaledVector(_forwardVec, inputForward / inputLen)
-                .addScaledVector(_rightVec, inputRight / inputLen)
+                .addScaledVector(_forwardVec, rawForward / rawMag)
+                .addScaledVector(_rightVec, rawRight / rawMag)
                 .normalize();
         }
 
@@ -246,7 +258,8 @@ export const PlayerCharacter: React.FC = () => {
         const desiredVelX = _moveDir.x * targetSpeed * slopeFactor;
         const desiredVelZ = _moveDir.z * targetSpeed * slopeFactor;
 
-        const accelLambda = inputLen > 0 ? ACCELERATION : DECELERATION;
+        // Immediate stop response when joystick is released and no keys are held
+        const accelLambda = inputLen > 0.01 ? ACCELERATION : DECELERATION * 1.25;
         const dampFactor = 1.0 - Math.exp(-accelLambda * delta);
 
         velocity.current.x = THREE.MathUtils.lerp(
@@ -260,11 +273,10 @@ export const PlayerCharacter: React.FC = () => {
             dampFactor
         );
 
-        // Snap residual velocity to 0 when keys are released so character never drifts
         if (
-            inputLen === 0 &&
+            inputLen <= 0.01 &&
             Math.hypot(velocity.current.x, velocity.current.z) <
-            STOP_SPEED_DEADZONE
+                STOP_SPEED_DEADZONE
         ) {
             velocity.current.x = 0;
             velocity.current.z = 0;
@@ -309,7 +321,6 @@ export const PlayerCharacter: React.FC = () => {
             playerTelemetry.isGrounded = false;
         }
 
-        // Smooth micro-steps across low-poly triangle edges when grounded
         if (!isVisualYInitialized.current) {
             smoothedVisualY.current = nextY;
             isVisualYInitialized.current = true;
@@ -333,7 +344,7 @@ export const PlayerCharacter: React.FC = () => {
 
         // 6. Smooth Shortest-Arc Character Rotation Toward Travel Direction
         const horizSpeed = Math.hypot(velocity.current.x, velocity.current.z);
-        if (horizSpeed > 0.08 && inputLen > 0) {
+        if (horizSpeed > 0.08 && inputLen > 0.01) {
             const targetAngle = Math.atan2(
                 velocity.current.x,
                 velocity.current.z
@@ -352,7 +363,7 @@ export const PlayerCharacter: React.FC = () => {
         let nextMoveState: WandererAnimState = 'idle';
         if (!playerTelemetry.isGrounded) {
             nextMoveState = 'jump';
-        } else if (isSprinting && horizSpeed > 3.25) {
+        } else if (isSprinting && horizSpeed > 3.1) {
             nextMoveState = 'run';
         } else if (horizSpeed > 0.08) {
             nextMoveState = 'walk';
@@ -386,7 +397,7 @@ export const PlayerCharacter: React.FC = () => {
         ) {
             const cycleSpeed =
                 playerTelemetry.moveState === 'run'
-                    ? 12.5
+                    ? 16.5
                     : playerTelemetry.moveState === 'walk'
                         ? 7.8
                         : 2.0;
@@ -416,7 +427,7 @@ export const PlayerCharacter: React.FC = () => {
                     delta * 10
                 );
             } else if (horizSpeed > 0.08) {
-                const legSwing = Math.sin(c) * (0.58 * stride + 0.14);
+                const legSwing = Math.sin(c) * (0.62 * stride + 0.14);
                 leftLegGroup.current.rotation.x = legSwing;
                 rightLegGroup.current.rotation.x = -legSwing;
                 leftArmGroup.current.rotation.x = -legSwing * 0.62;
