@@ -22,14 +22,38 @@ const CALLIGRAPHY_GUIDE_STROKES: GuideStrokeSpec[] = [
     { id: 'leaf-motif', d: 'M 708,86 C 722,68 742,50 764,42', strokeWidth: 50, weight: 0.05 },
 ];
 
+/**
+ * Pre-computed warm light motes that drift across the title scene, giving the
+ * still frame depth and a sense of evening air without any runtime allocation.
+ */
+const DRIFTING_MOTES: Array<{
+    left: number;
+    top: number;
+    size: number;
+    delay: number;
+    duration: number;
+    opacity: number;
+}> = [
+    { left: 8, top: 62, size: 3, delay: -2, duration: 17, opacity: 0.5 },
+    { left: 17, top: 44, size: 2, delay: -7, duration: 21, opacity: 0.42 },
+    { left: 26, top: 72, size: 4, delay: -11, duration: 15, opacity: 0.55 },
+    { left: 34, top: 33, size: 2, delay: -4, duration: 23, opacity: 0.38 },
+    { left: 47, top: 78, size: 3, delay: -13, duration: 19, opacity: 0.6 },
+    { left: 58, top: 38, size: 2, delay: -9, duration: 25, opacity: 0.36 },
+    { left: 66, top: 66, size: 4, delay: -6, duration: 16, opacity: 0.5 },
+    { left: 74, top: 47, size: 2, delay: -16, duration: 22, opacity: 0.4 },
+    { left: 83, top: 70, size: 3, delay: -1, duration: 18, opacity: 0.52 },
+    { left: 92, top: 40, size: 2, delay: -12, duration: 24, opacity: 0.34 },
+];
+
 export const LoadingScreen: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
     const setPhase = useGameStore((state) => state.setPhase);
     const introStage = useGameStore((state) => state.introStage);
     const setIntroStage = useGameStore((state) => state.setIntroStage);
-    const characterModel = useGameStore((state) => state.characterModel);
-    const setCharacterModel = useGameStore((state) => state.setCharacterModel);
     const isInitialTerrainReady = useGameStore((state) => state.isInitialTerrainReady);
+    const introSeen = useGameStore((state) => state.introSeen);
+    const markIntroSeen = useGameStore((state) => state.markIntroSeen);
 
     const maskPathRefs = useRef<Array<SVGPathElement | null>>([]);
     const underlineVisRef = useRef<SVGPathElement | null>(null);
@@ -39,6 +63,14 @@ export const LoadingScreen: React.FC = () => {
 
     useEffect(() => {
         if (phase !== 'loading') return;
+
+        // Returning from the character gallery: skip straight to the finished
+        // title composition instead of replaying the full brushstroke pass.
+        if (introSeen) {
+            setPaintComplete(true);
+            setIntroStage(4);
+            return;
+        }
 
         setPaintComplete(false);
         setIntroStage(1);
@@ -151,7 +183,11 @@ export const LoadingScreen: React.FC = () => {
                     rafId = requestAnimationFrame(animateBrush);
                 } else {
                     setPaintComplete(true);
-                    setIntroStage(3);
+                    // Never step backwards: the fallback timer may already have
+                    // revealed the menu while the brush pass was throttled.
+                    if (useGameStore.getState().introStage < 4) {
+                        setIntroStage(4);
+                    }
                 }
             };
 
@@ -159,7 +195,10 @@ export const LoadingScreen: React.FC = () => {
         }, 550);
 
         const stage4Timer = setTimeout(() => {
-            setIntroStage(4);
+            if (useGameStore.getState().introStage < 4) {
+                setPaintComplete(true);
+                setIntroStage(4);
+            }
         }, 4350);
 
         return () => {
@@ -167,23 +206,35 @@ export const LoadingScreen: React.FC = () => {
             clearTimeout(stage4Timer);
             cancelAnimationFrame(rafId);
         };
-    }, [phase, setIntroStage]);
+    }, [phase, setIntroStage, introSeen]);
 
     const handleEnterGarden = () => {
         if (introStage >= 5) return;
+        markIntroSeen();
         setIntroStage(5 as IntroStage);
 
+        // Hand off to the dedicated Wanderer gallery page
         setTimeout(() => {
-            setIntroStage(6 as IntroStage);
-        }, 2000);
-
-        setTimeout(() => {
-            // Transition only into gameplay when initial terrain is generated
-            setPhase('exploring');
-        }, 2750);
+            setPhase('characterSelect');
+        }, 900);
     };
 
-    if (phase === 'exploring') return null;
+    // Enter / Space starts the journey once the title has finished painting
+    useEffect(() => {
+        if (phase !== 'loading' || introStage < 4) return;
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.code !== 'Enter' && event.code !== 'Space') return;
+            event.preventDefault();
+            handleEnterGarden();
+        };
+
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [phase, introStage]);
+
+    if (phase === 'exploring' || phase === 'characterSelect') return null;
 
     return (
         <div
@@ -195,12 +246,42 @@ export const LoadingScreen: React.FC = () => {
                     }`}
             />
 
+            {/* Cinematic depth pass: low sun bloom, drifting motes and a soft vignette */}
+            <div className="start-sun-bloom" aria-hidden="true" />
+            <div className="start-haze-band" aria-hidden="true" />
+            <div className="start-mote-field" aria-hidden="true">
+                {DRIFTING_MOTES.map((mote, idx) => (
+                    <span
+                        key={`mote-${idx}`}
+                        className="start-mote"
+                        style={{
+                            left: `${mote.left}%`,
+                            top: `${mote.top}%`,
+                            width: `${mote.size}px`,
+                            height: `${mote.size}px`,
+                            opacity: mote.opacity,
+                            animationDelay: `${mote.delay}s`,
+                            animationDuration: `${mote.duration}s`,
+                        }}
+                    />
+                ))}
+            </div>
+            <div className="start-vignette" aria-hidden="true" />
+
+            <div className="start-frame-corners" aria-hidden="true">
+                <span className="frame-corner frame-corner--tl" />
+                <span className="frame-corner frame-corner--tr" />
+                <span className="frame-corner frame-corner--bl" />
+                <span className="frame-corner frame-corner--br" />
+            </div>
+
             <div className="loading-content-frame">
                 <div
                     className={`brand-header-group ${introStage >= 2 ? 'brand-header-group--visible' : ''
                         }`}
                 >
                     <div className="logo-svg-stage">
+                        <div className="logo-warm-aura" aria-hidden="true" />
                         <svg
                             className="keepsake-logo-svg"
                             viewBox="0 0 920 250"
@@ -366,30 +447,9 @@ export const LoadingScreen: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="loading-lower-slot">
-                    {introStage === 4 && (
+                                    <div className="loading-lower-slot">
+                    {introStage >= 4 && introStage < 5 && (
                         <div className="intro-interactive-stack">
-                            <div className="explorer-select-row">
-                                <button
-                                    type="button"
-                                    className={`explorer-choice-pill ${characterModel === 'female' ? 'active' : ''
-                                        }`}
-                                    onClick={() => setCharacterModel('female')}
-                                >
-                                    <span className="explorer-choice-dot" />
-                                    <span>The Memory Wanderer (Animated Female GLB)</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    className={`explorer-choice-pill ${characterModel === 'male' ? 'active' : ''
-                                        }`}
-                                    onClick={() => setCharacterModel('male')}
-                                >
-                                    <span className="explorer-choice-dot" />
-                                    <span>The Memory Wanderer (Animated Male GLB)</span>
-                                </button>
-                            </div>
-
                             <button
                                 type="button"
                                 className="sculpted-stone-enter-btn"
@@ -423,6 +483,8 @@ export const LoadingScreen: React.FC = () => {
                                     {isInitialTerrainReady ? 'Enter the Garden' : 'Preparing the Garden...'}
                                 </span>
                             </button>
+
+                            <p className="title-menu-hint">Chapter I · The Sanctuary</p>
                         </div>
                     )}
 

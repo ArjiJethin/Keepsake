@@ -52,7 +52,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'memory-pedestals',
         filename: '/models/MemElements/Pedestals/KeepSakePedestalV1-v1.glb',
         dimensions: '1.8m × 2.15m × 1.8m',
-        worldCoords: [1.65, 7.5],
+        worldCoords: [5.2, 7.2],
         intendedUse:
             'Compact carved sandstone memorial altar supporting floating memory crystals.',
     },
@@ -62,7 +62,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'memory-pedestals',
         filename: '/models/MemElements/Pedestals/KeepSakePedestalV2-v1.glb',
         dimensions: '2.6m × 2.95m × 2.6m',
-        worldCoords: [-3.6, 4.4],
+        worldCoords: [-7.4, 4.0],
         intendedUse:
             'Weathered tiered stone altar with curved stone arch arm and orbital ring.',
     },
@@ -82,7 +82,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'memory-elements',
         filename: '/models/MemElements/KeepSakeNoticeBoard.glb',
         dimensions: '2.2m × 2.35m × 0.6m',
-        worldCoords: [-2.4, 8.2],
+        worldCoords: [6.2, 26.0],
         intendedUse:
             "Low-poly wooden notice board placed at trailheads and Explorer's Rest clearings.",
     },
@@ -92,7 +92,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'memory-elements',
         filename: '/models/MemElements/StreetLamp/KeepSakeLamp-v1.glb',
         dimensions: '0.9m × 2.85m × 0.6m',
-        worldCoords: [1.8, 9.2],
+        worldCoords: [4.6, 15.8],
         intendedUse:
             'Stylized wooden lamp post with hanging lantern emitting warm golden light along winding trails.',
     },
@@ -112,7 +112,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'world-props',
         filename: '/models/Props/KeepSakeWoodenVehicle.glb',
         dimensions: '2.2m × 1.55m × 1.4m',
-        worldCoords: [6.8, -1.8],
+        worldCoords: [19.0, -13.0],
         intendedUse:
             "Two-wheeled wooden carriage loaded with traveler crates in Explorer's Rest areas.",
     },
@@ -122,7 +122,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'structures',
         filename: '/models/Structures/KeepSakeEntranceJapanese.glb',
         dimensions: '4.6m × 4.4m × 1.2m',
-        worldCoords: [-0.6, -7.8],
+        worldCoords: [-0.6, -10.2],
         intendedUse:
             'Iconic vermilion Torii entrance gate framing sacred Memory Sanctuary & Meadow thresholds.',
     },
@@ -132,7 +132,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'structures',
         filename: '/models/Structures/KeepSakeRockEntrance.glb',
         dimensions: '4.8m × 5.4m × 2.2m',
-        worldCoords: [-4.8, -1.2],
+        worldCoords: [-6.8, -3.5],
         intendedUse:
             'Ancient carved stone archway marking transitions into the Ancient Ruins biome.',
     },
@@ -142,7 +142,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'structures',
         filename: '/models/Structures/KeepSakeRockHouse-compressed.glb',
         dimensions: '5.2m × 4.2m × 5.2m',
-        worldCoords: [8.5, -4.2],
+        worldCoords: [11.5, -6.5],
         intendedUse:
             "Quaint stone and timber cottage landmark in the Sanctuary and Explorer's Rest biome.",
     },
@@ -152,7 +152,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'structures',
         filename: '/models/Structures/KeepSakeRockPiller.glb',
         dimensions: '1.2m × 3.1m × 1.2m',
-        worldCoords: [-7.5, 0.5],
+        worldCoords: [-18.2, 9.6],
         intendedUse:
             'Standing monolith stone pillar marking perimeter boundaries and Ancient Ruins.',
     },
@@ -162,7 +162,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'vegetation',
         filename: '/models/Vegetation/Flowers/KeepSakeFlower-v1.glb',
         dimensions: '0.55m × 0.62m × 0.55m',
-        worldCoords: [4.2, 5.2],
+        worldCoords: [-3.4, 10.8],
         intendedUse:
             'Blooming memory blossom clustered around Blossom Grove landmarks and shrines.',
     },
@@ -172,7 +172,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'vegetation',
         filename: '/models/Vegetation/Flowers/KeepSakeFlowerV2-v1.glb',
         dimensions: '0.55m × 0.62m × 0.55m',
-        worldCoords: [6.2, 2.2],
+        worldCoords: [14.2, 11.5],
         intendedUse:
             'Bell-shaped memory flower illuminating Golden Meadow and Blossom Grove clearings.',
     },
@@ -182,7 +182,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'vegetation',
         filename: '/models/Vegetation/KeepSakeHugeTree.glb',
         dimensions: '8.5m × 9.2m × 8.5m',
-        worldCoords: [3.8, 4.5],
+        worldCoords: [6.2, 2.2],
         intendedUse:
             'Colossal ancient flowering tree acting as the focal landmark of Blossom Grove biomes.',
     },
@@ -192,7 +192,7 @@ export const KEEPSAKE_ASSET_MANIFEST: AssetManifestEntry[] = [
         category: 'vegetation',
         filename: '/models/Vegetation/KeepSakeHugeTreeGreen.glb',
         dimensions: '8.5m × 9.4m × 8.5m',
-        worldCoords: [-8.5, 6.2],
+        worldCoords: [-11.5, 4.8],
         intendedUse:
             'Towering green canopy elder tree anchoring Evergreen Forest biome clearings.',
     },

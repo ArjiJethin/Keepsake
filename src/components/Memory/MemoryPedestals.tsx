@@ -35,7 +35,7 @@ export const INITIAL_GARDEN_MEMORIES: MemoryItem[] = [
     groupName: 'Beginnings',
     description:
       'A compact sandstone memory pedestal beside the first stepping stones. Its floating golden crystal hums softly as the evening breeze stirs the red floral banner.',
-    position: [1.65, 0, 5.8],
+    position: [5.2, 0, 7.2],
     tags: ['Minimal Pedestal', 'Beginning', 'Lantern'],
     echo: {
       floatingPhotoTitle: 'Lanterns at Dusk',
@@ -87,7 +87,7 @@ export const INITIAL_GARDEN_MEMORIES: MemoryItem[] = [
     groupName: 'Sketchbook Studies',
     description:
       'An Arched Memory Pedestal overlooking the western ridge. A single curved stone arm draped in white blossoms cradles the orbiting golden memory crystal.',
-    position: [-3.6, 0, 2.2],
+    position: [-7.4, 0, 4.0],
     tags: ['Arched Pedestal', 'Painting', 'Dusk'],
     echo: {
       floatingPhotoTitle: 'Western Arch Watercolour',
@@ -114,7 +114,7 @@ export const INITIAL_GARDEN_MEMORIES: MemoryItem[] = [
     groupName: 'Field Recordings',
     description:
       'A quiet acoustic melody recorded beside the arched sandstone shrine. You can hear the distant rush of the waterfall blending with the rustle of olive leaves.',
-    position: [2.1, 0, -4.8],
+    position: [8.6, 0, -8.4],
     tags: ['Melody', 'Banners', 'Breeze'],
     echo: {
       floatingPhotoTitle: 'Song of the Knoll',
@@ -140,7 +140,7 @@ export const INITIAL_GARDEN_MEMORIES: MemoryItem[] = [
     groupName: 'Northern Passage',
     description:
       'Walking through the mossy stone archway as fireflies and golden motes began to rise from the wildflowers around the northern Grand Memory Portal.',
-    position: [-2.6, 0, -6.8],
+    position: [-7.6, 0, -9.8],
     tags: ['Grand Portal', 'Fireflies', 'Trail'],
     echo: {
       floatingPhotoTitle: 'Northern Gate at Twilight',

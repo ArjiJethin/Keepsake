@@ -12,7 +12,11 @@ import {
     setWorldSeedGlobal,
 } from '../scenes/Environment/lowPolyUtils';
 
-export type AppPhase = 'loading' | 'intro' | 'exploring';
+export type AppPhase =
+    | 'loading'
+    | 'intro'
+    | 'characterSelect'
+    | 'exploring';
 export type IntroStage = 1 | 2 | 3 | 4 | 5 | 6;
 export type QualityPreset = 'high' | 'low';
 export type CharacterArchetype = 'female' | 'male';
@@ -46,6 +50,8 @@ interface GameState {
 
     introStage: IntroStage;
     setIntroStage: (stage: IntroStage) => void;
+    introSeen: boolean;
+    markIntroSeen: () => void;
 
     quality: QualityPreset;
     toggleQuality: () => void;
@@ -114,6 +120,8 @@ export const useGameStore = create<GameState>((set) => ({
 
     introStage: 1,
     setIntroStage: (introStage) => set({ introStage }),
+    introSeen: false,
+    markIntroSeen: () => set({ introSeen: true }),
 
     quality: 'high',
     toggleQuality: () =>

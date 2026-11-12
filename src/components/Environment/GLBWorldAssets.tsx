@@ -5,26 +5,38 @@ import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 /**
- * Exact binary GLB paths from the Keepsake public/ Asset Manifest.
+ * World asset paths.
+ *
+ * The authored models are extremely dense (0.4M–3M triangles each), so the world
+ * draws decimated LOD copies from `public/models-lod` generated with
+ * gltf-transform + meshoptimizer. The originals stay untouched in `public/models`
+ * and the two playable characters keep their full-resolution files.
  */
 export const GLB_ASSET_PATHS = {
     femaleCharacter: '/KeepSakeFemale-v2-animated.glb',
     maleCharacter: '/KeepSakeMale-v2-animated.glb',
-    pedestalV1: '/models/MemElements/Pedestals/KeepSakePedestalV1-v1.glb',
-    pedestalV2: '/models/MemElements/Pedestals/KeepSakePedestalV2-v1.glb',
-    pedestalV3: '/models/MemElements/Pedestals/KeepSakePedestalV3-v1.glb',
-    noticeBoard: '/models/MemElements/KeepSakeNoticeBoard.glb',
-    streetLamp: '/models/MemElements/StreetLamp/KeepSakeLamp-v1.glb',
-    tent: '/models/Props/KeepSakeTent.glb',
-    woodenVehicle: '/models/Props/KeepSakeWoodenVehicle.glb',
-    entranceJapanese: '/models/Structures/KeepSakeEntranceJapanese.glb',
-    rockEntrance: '/models/Structures/KeepSakeRockEntrance.glb',
-    rockHouse: '/models/Structures/KeepSakeRockHouse-compressed.glb',
-    rockPillar: '/models/Structures/KeepSakeRockPiller.glb',
-    flowerV1: '/models/Vegetation/Flowers/KeepSakeFlower-v1.glb',
-    flowerV2: '/models/Vegetation/Flowers/KeepSakeFlowerV2-v1.glb',
-    hugeTree: '/models/Vegetation/KeepSakeHugeTree.glb',
-    hugeTreeGreen: '/models/Vegetation/KeepSakeHugeTreeGreen.glb',
+    pedestalV1: '/models-lod/models/MemElements/Pedestals/KeepSakePedestalV1-v1.glb',
+    pedestalV2: '/models-lod/models/MemElements/Pedestals/KeepSakePedestalV2-v1.glb',
+    pedestalV3: '/models-lod/models/MemElements/Pedestals/KeepSakePedestalV3-v1.glb',
+    noticeBoard: '/models-lod/models/MemElements/KeepSakeNoticeBoard.glb',
+    streetLamp: '/models-lod/models/MemElements/StreetLamp/KeepSakeLamp-v1.glb',
+    tent: '/models-lod/models/Props/KeepSakeTent.glb',
+    woodenVehicle: '/models-lod/models/Props/KeepSakeWoodenVehicle.glb',
+    entranceJapanese: '/models-lod/models/Structures/KeepSakeEntranceJapanese.glb',
+    rockEntrance: '/models-lod/models/Structures/KeepSakeRockEntrance.glb',
+    rockHouse: '/models-lod/models/Structures/KeepSakeRockHouse-compressed.glb',
+    rockPillar: '/models-lod/models/Structures/KeepSakeRockPiller.glb',
+    flowerV1: '/models-lod/models/Vegetation/Flowers/KeepSakeFlower-v1.glb',
+    flowerV2: '/models-lod/models/Vegetation/Flowers/KeepSakeFlowerV2-v1.glb',
+    hugeTree: '/models-lod/models/Vegetation/KeepSakeHugeTree.glb',
+    hugeTreeGreen: '/models-lod/models/Vegetation/KeepSakeHugeTreeGreen.glb',
+    grass: '/models-lod/models/Vegetation/KeepSakeGrass.glb',
+    grassBush: '/models-lod/models/Vegetation/KeepSakeGrassBush.glb',
+    pond: '/models-lod/models/Vegetation/KeepSakePond.glb',
+    oldTreeV1: '/models-lod/models/Vegetation/KeepSakeOldTreeV1.glb',
+    oldTreeV2: '/models-lod/models/Vegetation/KeepSakeOldTreeV2.glb',
+    tallTreeV1: '/models-lod/models/Vegetation/KeepSakeTallTreeV1.glb',
+    tallTreeV2: '/models-lod/models/Vegetation/KeepSakeTallTreeV2.glb',
 } as const;
 
 export type GLBAssetKey = keyof typeof GLB_ASSET_PATHS;
@@ -64,7 +76,9 @@ function getNormalizedGLBTemplate(
     template.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
             const mesh = child as THREE.Mesh;
-            mesh.castShadow = true;
+            // Tiny foliage and trinkets never produce readable shadows, so
+            // skipping them keeps the shadow pass cheap.
+            mesh.castShadow = targetHeightMeters >= 1.0;
             mesh.receiveShadow = true;
 
             const mats = Array.isArray(mesh.material)
@@ -82,6 +96,11 @@ function getNormalizedGLBTemplate(
                     }
                 }
             });
+
+            // World props never move: compose the local matrix once at load time
+            // instead of recalculating it for every mesh on every frame.
+            mesh.updateMatrix();
+            mesh.matrixAutoUpdate = false;
         }
     });
 
@@ -238,13 +257,20 @@ if (typeof window !== 'undefined') {
             GLB_ASSET_PATHS.woodenVehicle,
             GLB_ASSET_PATHS.flowerV1,
             GLB_ASSET_PATHS.flowerV2,
+            GLB_ASSET_PATHS.grass,
+            GLB_ASSET_PATHS.grassBush,
+            GLB_ASSET_PATHS.pond,
+            GLB_ASSET_PATHS.oldTreeV1,
+            GLB_ASSET_PATHS.oldTreeV2,
+            GLB_ASSET_PATHS.tallTreeV1,
+            GLB_ASSET_PATHS.tallTreeV2,
         ];
         priorityPaths.forEach((path, idx) => {
             window.setTimeout(() => {
                 useGLTF.preload(path, true, true, (loader) => {
                     loader.setMeshoptDecoder(MeshoptDecoder);
                 });
-            }, idx * 120);
+            }, idx * 90);
         });
     }, 900);
 }

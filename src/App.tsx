@@ -2,6 +2,7 @@
 import React from 'react';
 import { GardenScene } from './scenes/GardenScene/GardenScene';
 import { LoadingScreen } from './components/LoadingScreen/LoadingScreen';
+import { CharacterSelectScreen } from './components/CharacterSelect/CharacterSelectScreen';
 import { GameHUD } from './components/UI/GameHUD';
 import { CustomCursor } from './components/UI/CustomCursor';
 
@@ -13,6 +14,9 @@ export const App: React.FC = () => {
 
       {/* Calligraphic Brushstroke Loading & Intro Screen */}
       <LoadingScreen />
+
+      {/* 3D Wanderer Gallery picked after the intro */}
+      <CharacterSelectScreen />
 
       {/* Infinite Chunk-Based 3D Low-Poly World, Explorer Character & Pointer-Lock Camera */}
       <GardenScene />

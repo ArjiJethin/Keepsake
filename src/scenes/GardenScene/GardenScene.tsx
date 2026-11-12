@@ -61,7 +61,7 @@ export const GardenScene: React.FC = () => {
             typeof navigator !== 'undefined' &&
             navigator.hardwareConcurrency &&
             navigator.hardwareConcurrency <= 4;
-        return isLowCoreDevice ? [1, 1.35] : [1, 1.75];
+        return isLowCoreDevice ? [1, 1.2] : [1, 1.5];
     }, [quality]);
 
     return (

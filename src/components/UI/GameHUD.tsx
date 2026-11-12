@@ -1,21 +1,20 @@
 // src/components/UI/GameHUD.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     BookOpen,
-    UserCheck,
     Settings,
-    Sparkles,
     X,
     MapPin,
     Calendar,
     Volume2,
     Sprout,
-    Compass,
     Layers,
     Navigation,
     RefreshCw,
     Hash,
     Check,
+    Feather,
+    MousePointer2,
 } from 'lucide-react';
 import { playerTelemetry, useGameStore } from '../../store/useGameStore';
 import {
@@ -27,6 +26,11 @@ import {
     type AssetManifestEntry,
 } from '../../systems/AssetManager/glbExporter';
 import './GameHUD.css';
+
+const WANDERER_NAMES = {
+    female: 'Aria',
+    male: 'Rowan',
+} as const;
 
 export const GameHUD: React.FC = () => {
     const phase = useGameStore((state) => state.phase);
@@ -45,7 +49,6 @@ export const GameHUD: React.FC = () => {
         (state) => state.toggleCharacterModel
     );
     const nearbyZone = useGameStore((state) => state.nearbyZone);
-    const activeChunkCoord = useGameStore((state) => state.activeChunkCoord);
     const worldSeed = useGameStore((state) => state.worldSeed);
     const setWorldSeed = useGameStore((state) => state.setWorldSeed);
     const regenerateWorldSeed = useGameStore(
@@ -56,8 +59,11 @@ export const GameHUD: React.FC = () => {
     const setIntroStage = useGameStore((state) => state.setIntroStage);
 
     const [showAssetCatalog, setShowAssetCatalog] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
     const [isEditingSeed, setIsEditingSeed] = useState(false);
     const [seedDraft, setSeedDraft] = useState(worldSeed);
+
+    const settingsAnchorRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         setSeedDraft(worldSeed);
@@ -66,17 +72,31 @@ export const GameHUD: React.FC = () => {
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (isEditingSeed) return;
-            if (
-                e.code === 'KeyC' &&
-                phase === 'exploring' &&
-                !useGameStore.getState().activeMemory
-            ) {
+            const state = useGameStore.getState();
+            if (e.code === 'KeyC' && phase === 'exploring' && !state.activeMemory) {
                 toggleCharacterModel();
+            }
+            if (e.code === 'Escape') {
+                setShowSettings(false);
+                setShowAssetCatalog(false);
             }
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [phase, toggleCharacterModel, isEditingSeed]);
+
+    // Clicking anywhere outside the settings popover dismisses it
+    useEffect(() => {
+        if (!showSettings) return;
+        const onPointerDown = (event: PointerEvent) => {
+            const anchor = settingsAnchorRef.current;
+            if (anchor && !anchor.contains(event.target as Node)) {
+                setShowSettings(false);
+            }
+        };
+        window.addEventListener('pointerdown', onPointerDown);
+        return () => window.removeEventListener('pointerdown', onPointerDown);
+    }, [showSettings]);
 
     if (phase !== 'exploring') return null;
 
@@ -89,6 +109,7 @@ export const GameHUD: React.FC = () => {
     const handleReplayIntro = () => {
         closeMemory();
         setShowAssetCatalog(false);
+        setShowSettings(false);
         setIntroStage(1);
         setPhase('loading');
     };
@@ -117,173 +138,180 @@ export const GameHUD: React.FC = () => {
         setIsEditingSeed(false);
     };
 
+    const handleOpenJournal = () => {
+        const target = nearbyMemory || persistentMemories[0];
+        if (target) openMemory(target);
+    };
+
+    const regionLabel = nearbyZone ? nearbyZone.name : activeBiomeMeta.name;
+
     return (
-        <div className="keepsake-hud-layer">
-            {/* Top-Left Keepsake Brand Logo, World Seed & Biome Status */}
-            <div className="hud-top-left">
-                <div
-                    className="hud-brand-logo"
-                    onClick={handleReplayIntro}
-                    title="Click to replay brushstroke intro sequence"
+        <div className="kh-hud">
+            {/* Top-left: wordmark only, like a title watermark */}
+            <div className="kh-brand">
+                <span className="kh-brand-text">Keepsake</span>
+                <svg
+                    className="kh-brand-leaf"
+                    viewBox="0 0 32 32"
+                    width="17"
+                    height="17"
+                    aria-hidden="true"
                 >
-                    <span className="hud-brand-text">Keepsake</span>
-                    <svg
-                        className="hud-brand-leaf"
-                        viewBox="0 0 32 32"
-                        width="22"
-                        height="22"
+                    <path d="M6,26 C10,12 20,6 30,4 C26,16 18,24 6,26 Z" fill="currentColor" />
+                </svg>
+            </div>
+
+            {/* Top-center: region name, nothing else */}
+            {!currentMemoryData && !showAssetCatalog && !showSettings && (
+                <div className="kh-region-pill">
+                    <MapPin size={12} strokeWidth={2.2} />
+                    <span>{regionLabel}</span>
+                </div>
+            )}
+
+            {/* Top-right: icon rail */}
+            <div className="kh-icon-rail">
+                <button
+                    type="button"
+                    className="kh-icon-btn"
+                    onClick={handleOpenJournal}
+                    title="Memory journal"
+                >
+                    <BookOpen size={16} />
+                    <span className="kh-icon-badge">
+                        {discoveredIds.length}/{persistentMemories.length}
+                    </span>
+                </button>
+
+                <button
+                    type="button"
+                    className={`kh-icon-btn${showAssetCatalog ? ' kh-icon-btn--on' : ''}`}
+                    onClick={() => {
+                        setShowAssetCatalog((prev) => !prev);
+                        setShowSettings(false);
+                        setInputMode('cursor');
+                    }}
+                    title={`World library — ${KEEPSAKE_ASSET_MANIFEST.length} models`}
+                >
+                    <Layers size={16} />
+                    <span className="kh-icon-badge kh-icon-badge--count">
+                        {KEEPSAKE_ASSET_MANIFEST.length}
+                    </span>
+                </button>
+
+                <div className="kh-settings-anchor" ref={settingsAnchorRef}>
+                    <button
+                        type="button"
+                        className={`kh-icon-btn${showSettings ? ' kh-icon-btn--on' : ''}`}
+                        onClick={() => {
+                            setShowSettings((prev) => !prev);
+                            setShowAssetCatalog(false);
+                        }}
+                        title="Settings"
+                        aria-expanded={showSettings}
                     >
-                        <path
-                            d="M6,26 C10,12 20,6 30,4 C26,16 18,24 6,26 Z"
-                            fill="#f7ecda"
-                        />
-                    </svg>
-                </div>
+                        <Settings size={16} />
+                    </button>
 
-                <div className="hud-pills-row">
-                    <div className="hud-discovery-pill">
-                        <span>
-                            Memories Awoken: {discoveredIds.length} /{' '}
-                            {persistentMemories.length}
-                        </span>
-                    </div>
-                    <div className="hud-discovery-pill hud-biome-pill">
-                        <Sprout size={13} />
-                        <span>{activeBiomeMeta.name}</span>
-                    </div>
-                    <div className="hud-discovery-pill hud-chunk-pill">
-                        <Compass size={13} />
-                        <span>
-                            Chunk ({activeChunkCoord[0]}, {activeChunkCoord[1]})
-                        </span>
-                    </div>
-                </div>
+                    {showSettings && (
+                        <div className="kh-settings" role="dialog" aria-label="Settings">
+                            <div className="kh-settings-head">
+                                <span className="kh-settings-title">Settings</span>
+                                <button
+                                    type="button"
+                                    className="kh-settings-close"
+                                    onClick={() => setShowSettings(false)}
+                                    aria-label="Close settings"
+                                >
+                                    <X size={14} />
+                                </button>
+                            </div>
 
-                {/* Deterministic World Seed Bar & Regenerate Controls */}
-                <div className="hud-seed-bar">
-                    {!isEditingSeed ? (
-                        <>
-                            <button
-                                className="hud-seed-display-btn"
-                                onClick={() => {
-                                    setIsEditingSeed(true);
-                                    setInputMode('cursor');
-                                }}
-                                title="Click to enter a custom World Seed"
-                            >
-                                <Hash size={13} />
-                                <span>Seed: {worldSeed}</span>
-                            </button>
-                            <button
-                                className="hud-seed-regen-btn"
-                                onClick={handleRegenerateWorld}
-                                title="Generate a brand-new deterministic world seed"
-                            >
-                                <RefreshCw size={13} />
-                                <span>New World</span>
-                            </button>
-                        </>
-                    ) : (
-                        <form
-                            className="hud-seed-form"
-                            onSubmit={handleApplyCustomSeed}
-                        >
-                            <input
-                                type="text"
-                                className="hud-seed-input"
-                                value={seedDraft}
-                                onChange={(e) => setSeedDraft(e.target.value)}
-                                placeholder="Enter seed..."
-                                maxLength={24}
-                                autoFocus
-                            />
-                            <button
-                                type="submit"
-                                className="hud-seed-apply-btn"
-                                title="Load this seed"
-                            >
-                                <Check size={14} />
-                            </button>
-                            <button
-                                type="button"
-                                className="hud-seed-cancel-btn"
-                                onClick={() => setIsEditingSeed(false)}
-                                title="Cancel"
-                            >
-                                <X size={14} />
-                            </button>
-                        </form>
+                            <div className="kh-settings-body">
+                                <div className="kh-setting-line">
+                                    <span className="kh-setting-label">Wanderer</span>
+                                    <span className="kh-setting-value">
+                                        {WANDERER_NAMES[characterModel]}
+                                        <kbd className="kh-key">C</kbd>
+                                    </span>
+                                </div>
+
+                                <div className="kh-setting-block">
+                                    <span className="kh-setting-label">World seed</span>
+                                    {!isEditingSeed ? (
+                                        <div className="kh-seed-row">
+                                            <span className="kh-seed-value">
+                                                <Hash size={11} />
+                                                {worldSeed}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                className="kh-icon-mini"
+                                                onClick={() => {
+                                                    setIsEditingSeed(true);
+                                                    setInputMode('cursor');
+                                                }}
+                                                title="Enter a custom seed"
+                                            >
+                                                <Feather size={13} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="kh-icon-mini"
+                                                onClick={handleRegenerateWorld}
+                                                title="Generate a new world"
+                                            >
+                                                <RefreshCw size={13} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <form
+                                            className="kh-seed-form"
+                                            onSubmit={handleApplyCustomSeed}
+                                        >
+                                            <input
+                                                className="kh-seed-input"
+                                                value={seedDraft}
+                                                onChange={(e) => setSeedDraft(e.target.value)}
+                                                placeholder="Seed…"
+                                                maxLength={24}
+                                                autoFocus
+                                            />
+                                            <button
+                                                type="submit"
+                                                className="kh-icon-mini kh-icon-mini--apply"
+                                                title="Load this seed"
+                                            >
+                                                <Check size={13} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="kh-icon-mini"
+                                                onClick={() => setIsEditingSeed(false)}
+                                                title="Cancel"
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        </form>
+                                    )}
+                                </div>
+
+                                <div className="kh-settings-actions">
+                                    <button
+                                        type="button"
+                                        className="kh-settings-btn"
+                                        onClick={handleReplayIntro}
+                                    >
+                                        Return to title
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* Top-Center Landmark Zone or Active Biome Banner */}
-            {!currentMemoryData && !showAssetCatalog && (
-                <div className="hud-zone-banner">
-                    <span className="hud-zone-type">
-                        {nearbyZone
-                            ? nearbyZone.zoneType.replace('_', ' ').toUpperCase()
-                            : `BIOME REGION • SEED ${worldSeed}`}
-                    </span>
-                    <h3 className="hud-zone-title">
-                        {nearbyZone ? nearbyZone.name : activeBiomeMeta.name}
-                    </h3>
-                    <p className="hud-zone-desc">
-                        {nearbyZone
-                            ? nearbyZone.description
-                            : activeBiomeMeta.subtitle}
-                    </p>
-                </div>
-            )}
-
-            {/* Top-Right Action Bar */}
-            <div className="hud-top-right">
-                <button
-                    className="hud-explorer-switch-pill"
-                    onClick={toggleCharacterModel}
-                    title="Switch Playable Explorer (Shortcut: C)"
-                >
-                    <UserCheck size={16} />
-                    <span>
-                        {characterModel === 'female'
-                            ? 'Wanderer: Female (F)'
-                            : 'Wanderer: Male (M)'}
-                    </span>
-                    <kbd className="hud-mini-key">C</kbd>
-                </button>
-
-                <button
-                    className="hud-explorer-switch-pill"
-                    onClick={() => {
-                        setShowAssetCatalog((prev) => !prev);
-                        setInputMode('cursor');
-                    }}
-                    title="Inspect All 17 GLB Assets in World"
-                >
-                    <Layers size={16} />
-                    <span>GLB Assets ({KEEPSAKE_ASSET_MANIFEST.length})</span>
-                </button>
-
-                <button
-                    className="hud-circle-btn"
-                    onClick={() =>
-                        openMemory(nearbyMemory || persistentMemories[0])
-                    }
-                    title="Open Memory Journal"
-                >
-                    <BookOpen size={18} />
-                </button>
-
-                <button
-                    className="hud-circle-btn"
-                    onClick={handleReplayIntro}
-                    title="Replay Brushstroke Loading Sequence"
-                >
-                    <Settings size={18} />
-                </button>
-            </div>
-
-            {/* 3D Asset Library Quick-Inspector Modal */}
+            {/* World library modal */}
             {showAssetCatalog && (
                 <div
                     className="memory-modal-backdrop"
@@ -294,23 +322,20 @@ export const GameHUD: React.FC = () => {
                         onClick={(e) => e.stopPropagation()}
                     >
                         <button
+                            type="button"
                             className="memory-close-btn"
                             onClick={() => setShowAssetCatalog(false)}
-                            aria-label="Close Asset Catalog"
+                            aria-label="Close world library"
                         >
-                            <X size={20} />
+                            <X size={18} />
                         </button>
 
                         <div className="memory-card-header">
-                            <span className="memory-category-tag">
-                                VERIFIED 17-MODEL BINARY GLB MANIFEST
-                            </span>
-                            <h2 className="memory-card-title">
-                                Keepsake 3D World Library
-                            </h2>
+                            <span className="memory-category-tag">World Asset Library</span>
+                            <h2 className="memory-card-title">Keepsake 3D World Library</h2>
                             <p className="memory-card-subtitle">
-                                Click any GLB asset below to teleport your Explorer
-                                directly to its placement in the garden.
+                                Pick any model to travel straight to where it rests in
+                                the garden.
                             </p>
                         </div>
 
@@ -332,11 +357,12 @@ export const GameHUD: React.FC = () => {
                                         </p>
                                     </div>
                                     <button
+                                        type="button"
                                         className="asset-teleport-btn"
                                         onClick={() => handleTeleportToAsset(item)}
                                     >
                                         <Navigation size={14} />
-                                        <span>Visit in 3D</span>
+                                        <span>Visit</span>
                                     </button>
                                 </div>
                             ))}
@@ -345,88 +371,78 @@ export const GameHUD: React.FC = () => {
                 </div>
             )}
 
-            {/* Contextual Proximity Prompt */}
+            {/* Contextual proximity prompt */}
             {nearbyMemory && !currentMemoryData && !showAssetCatalog && (
                 <div className="hud-proximity-prompt">
                     <button
+                        type="button"
                         className="remember-prompt-pill"
                         onClick={() => openMemory(nearbyMemory)}
                     >
                         <span className="remember-prompt-text">Remember?</span>
-                        <kbd className="remember-prompt-key">E</kbd>
+                        <kbd className="hud-mini-key hud-mini-key--ink">E</kbd>
                     </button>
                     <span className="remember-prompt-subtitle">
-                        {nearbyMemory.title} ({nearbyMemory.subtitle})
+                        {nearbyMemory.title}
                     </span>
                 </div>
             )}
 
-            {/* Bottom-Left Controls */}
-            <div className="hud-bottom-left-controls">
-                <div className="control-row">
-                    <div className="wasd-cluster">
-                        <div className="wasd-top">
-                            <kbd className="key-cap key-small">W</kbd>
-                        </div>
-                        <div className="wasd-bottom">
-                            <kbd className="key-cap key-small">A</kbd>
-                            <kbd className="key-cap key-small">S</kbd>
-                            <kbd className="key-cap key-small">D</kbd>
-                        </div>
-                    </div>
-                    <span className="control-label">Move</span>
-                </div>
-
-                <div className="control-row">
-                    <span className="mouse-icon-badge" />
-                    <span className="control-label">
-                        {inputMode === 'camera'
-                            ? 'Mode A: Camera Look Active'
-                            : 'Mode B: UI Cursor Active (Click World or Alt to Look)'}
+            {/* Bottom-left: compact control legend */}
+            <div className="kh-controls">
+                <div className="kh-controls-row">
+                    <span className="kh-controls-label">Move</span>
+                    <span className="kh-key-cluster">
+                        <kbd className="kh-key">W</kbd>
+                        <kbd className="kh-key">A</kbd>
+                        <kbd className="kh-key">S</kbd>
+                        <kbd className="kh-key">D</kbd>
+                    </span>
+                    <span className="kh-control-inline">
+                        <kbd className="kh-key kh-key--wide">Shift</kbd>
+                        <span>Sprint</span>
+                    </span>
+                    <span className="kh-control-inline">
+                        <kbd className="kh-key kh-key--wide">Space</kbd>
+                        <span>Jump</span>
                     </span>
                 </div>
 
-                <div className="control-row">
-                    <kbd
-                        className={`key-cap key-wide ${inputMode === 'cursor' ? 'key-cap--active' : ''
+                <div className="kh-controls-row">
+                    <span className="kh-controls-label">Act</span>
+                    <button
+                        type="button"
+                        className="kh-control-inline kh-control-inline--btn"
+                        onClick={() => openMemory(nearbyMemory || persistentMemories[0])}
+                        title="Remember a memory"
+                    >
+                        <kbd className="kh-key">E</kbd>
+                        <span>Remember</span>
+                    </button>
+                    <button
+                        type="button"
+                        className="kh-control-inline kh-control-inline--btn"
+                        onClick={toggleCharacterModel}
+                        title="Change character"
+                    >
+                        <kbd className="kh-key">C</kbd>
+                        <span>Character</span>
+                    </button>
+                    <button
+                        type="button"
+                        className={`kh-control-inline kh-control-inline--btn${inputMode === 'cursor' ? ' kh-control-inline--on' : ''
                             }`}
                         onClick={toggleInputMode}
-                        style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+                        title="Toggle camera and cursor mode"
                     >
-                        Alt
-                    </kbd>
-                    <span className="control-label">Toggle Camera / UI Cursor</span>
-                </div>
-
-                <div className="control-row">
-                    <kbd className="key-cap">E</kbd>
-                    <span className="control-label">Awaken Memory Pedestal</span>
-                </div>
-
-                <div className="control-row">
-                    <kbd className="key-cap key-wide">Shift</kbd>
-                    <span className="control-label">Sprint</span>
-                    <kbd className="key-cap key-wide" style={{ marginLeft: 4 }}>
-                        Space
-                    </kbd>
-                    <span className="control-label">Jump</span>
+                        <MousePointer2 size={11} strokeWidth={2.3} />
+                        <kbd className="kh-key kh-key--wide">Alt</kbd>
+                        <span>{inputMode === 'cursor' ? 'Cursor' : 'Look'}</span>
+                    </button>
                 </div>
             </div>
 
-            {/* Bottom-Right "Remember" Button */}
-            <div className="hud-bottom-right">
-                <button
-                    className="hud-remember-main-btn"
-                    onClick={() =>
-                        openMemory(nearbyMemory || persistentMemories[0])
-                    }
-                >
-                    <Sparkles size={18} className="remember-flower-icon" />
-                    <span>Remember</span>
-                </button>
-            </div>
-
-            {/* Memory Modal */}
+            {/* Memory echo modal */}
             {currentMemoryData && (
                 <div className="memory-modal-backdrop" onClick={closeMemory}>
                     <div
@@ -434,25 +450,26 @@ export const GameHUD: React.FC = () => {
                         onClick={(e) => e.stopPropagation()}
                     >
                         <button
+                            type="button"
                             className="memory-close-btn"
                             onClick={closeMemory}
-                            aria-label="Close Memory Echo"
+                            aria-label="Close memory echo"
                         >
-                            <X size={20} />
+                            <X size={18} />
                         </button>
 
                         <div className="memory-card-header">
                             <div className="memory-badges-row">
                                 <span className="memory-category-tag">
-                                    {currentMemoryData.category.toUpperCase()} ECHO
+                                    {currentMemoryData.category} echo
                                 </span>
                                 <span className="memory-stage-badge">
-                                    <Sprout size={13} />
+                                    <Sprout size={12} />
                                     {currentMemoryData.subtitle}
                                 </span>
                                 {currentMemoryData.importance && (
                                     <span className="memory-importance-badge">
-                                        {currentMemoryData.importance.toUpperCase()}
+                                        {currentMemoryData.importance}
                                     </span>
                                 )}
                             </div>
@@ -471,7 +488,7 @@ export const GameHUD: React.FC = () => {
                                 <div className="memory-art-meadow" />
                                 {currentMemoryData.echo?.ambientAudioLabel && (
                                     <div className="memory-echo-audio-pill">
-                                        <Volume2 size={14} />
+                                        <Volume2 size={13} />
                                         <span>
                                             {currentMemoryData.echo.ambientAudioLabel}
                                         </span>
@@ -488,14 +505,14 @@ export const GameHUD: React.FC = () => {
 
                         <div className="memory-meta-row">
                             <span className="memory-meta-item">
-                                <Calendar size={14} /> {currentMemoryData.date}
+                                <Calendar size={13} /> {currentMemoryData.date}
                             </span>
                             <span className="memory-meta-item">
-                                <MapPin size={14} /> {currentMemoryData.location}
+                                <MapPin size={13} /> {currentMemoryData.location}
                             </span>
                             {currentMemoryData.people && (
                                 <span className="memory-meta-item">
-                                    With: {currentMemoryData.people.join(', ')}
+                                    With {currentMemoryData.people.join(', ')}
                                 </span>
                             )}
                         </div>
@@ -515,16 +532,18 @@ export const GameHUD: React.FC = () => {
                         <div className="memory-card-footer">
                             {currentMemoryData.growthStage !== 'landmark' && (
                                 <button
+                                    type="button"
                                     className="memory-nourish-btn"
                                     onClick={() =>
                                         advanceMemoryGrowth(currentMemoryData.id)
                                     }
                                 >
-                                    <Sprout size={16} />
-                                    <span>Nourish Memory Growth</span>
+                                    <Sprout size={15} />
+                                    <span>Nourish</span>
                                 </button>
                             )}
                             <button
+                                type="button"
                                 className="memory-return-btn"
                                 onClick={closeMemory}
                             >

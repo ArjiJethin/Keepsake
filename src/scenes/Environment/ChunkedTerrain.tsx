@@ -1,5 +1,11 @@
 // src/scenes/Environment/ChunkedTerrain.tsx
-import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, {
+    Suspense,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+} from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { THEME } from '../../styles/theme';
@@ -24,6 +30,9 @@ import {
     collisionManager,
     type SolidCollider,
 } from '../../systems/Collision/collisionSystem';
+import { isInsideSanctuaryClearing } from './sanctuaryLayout';
+import { GLB_ASSET_PATHS } from '../../components/Environment/GLBWorldAssets';
+import { InstancedGLBField } from '../../components/Environment/InstancedGLBField';
 import {
     CozyStorybookCottage,
     ExplorerCampsite,
@@ -54,6 +63,300 @@ const SHARED_GEOMETRIES = {
     grassBlade: new THREE.ConeGeometry(0.08, 0.42, 4),
     flowerHead: new THREE.CylinderGeometry(0.16, 0.08, 0.06, 5),
 };
+
+/**
+ * Shared flat-shaded surface materials, deduped by colour + roughness. Using a
+ * single material instance per palette entry (instead of one per mesh) keeps
+ * material and shader-program churn low across the whole chunk grid.
+ */
+const SURFACE_MATERIAL_CACHE = new Map<string, THREE.MeshStandardMaterial>();
+
+function surfaceMaterial(
+    color: string,
+    roughness: number
+): THREE.MeshStandardMaterial {
+    const key = `${color}|${roughness}`;
+    const cached = SURFACE_MATERIAL_CACHE.get(key);
+    if (cached) return cached;
+
+    const material = new THREE.MeshStandardMaterial({
+        color,
+        roughness,
+        flatShading: true,
+    });
+    SURFACE_MATERIAL_CACHE.set(key, material);
+    return material;
+}
+
+interface ChunkInstanceBatch {
+    key: string;
+    geometry: THREE.BufferGeometry;
+    material: THREE.MeshStandardMaterial;
+    matrices: THREE.Matrix4[];
+    castShadow: boolean;
+}
+
+interface BatchCollector {
+    batches: Map<string, ChunkInstanceBatch>;
+    push: (
+        geometryKey: string,
+        geometry: THREE.BufferGeometry,
+        color: string,
+        roughness: number,
+        matrix: THREE.Matrix4,
+        castShadow?: boolean
+    ) => void;
+}
+
+function createBatchCollector(): BatchCollector {
+    const batches = new Map<string, ChunkInstanceBatch>();
+
+    const push: BatchCollector['push'] = (
+        geometryKey,
+        geometry,
+        color,
+        roughness,
+        matrix,
+        castShadow = true
+    ) => {
+        const key = `${geometryKey}|${color}|${roughness}|${
+            castShadow ? 'cast' : 'nocast'
+        }`;
+        let batch = batches.get(key);
+        if (!batch) {
+            batch = {
+                key,
+                geometry,
+                material: surfaceMaterial(color, roughness),
+                matrices: [],
+                castShadow,
+            };
+            batches.set(key, batch);
+        }
+        batch.matrices.push(matrix.clone());
+    };
+
+    return { batches, push };
+}
+
+// Local offsets of every tree part relative to the tree's root transform
+const TREE_PART_OFFSETS = {
+    shrub: [0, 0.38, 0],
+    trunk: [0, 1.0, 0],
+    pineTier1: [0, 1.85, 0],
+    pineTier2: [0, 2.85, 0],
+    pineTier3: [0, 3.7, 0],
+    canopyMain: [0, 2.7, 0],
+    canopySubLeft: [-0.85, 2.3, 0.45],
+    canopySubRight: [0.85, 2.4, -0.35],
+} as const;
+
+const _instancePos = new THREE.Vector3();
+const _instanceQuat = new THREE.Quaternion();
+const _instanceScale = new THREE.Vector3();
+const _instanceEuler = new THREE.Euler();
+const _instanceParentMatrix = new THREE.Matrix4();
+const _instancePartMatrix = new THREE.Matrix4();
+
+function composeInstanceMatrix(
+    x: number,
+    y: number,
+    z: number,
+    rx: number,
+    ry: number,
+    rz: number,
+    sx: number,
+    sy: number,
+    sz: number,
+    target: THREE.Matrix4
+): THREE.Matrix4 {
+    _instancePos.set(x, y, z);
+    _instanceQuat.setFromEuler(_instanceEuler.set(rx, ry, rz));
+    _instanceScale.set(sx, sy, sz);
+    return target.compose(_instancePos, _instanceQuat, _instanceScale);
+}
+
+/**
+ * Collapses a chunk's procedural trees into instanced batches grouped by
+ * geometry + palette colour. Identical silhouettes and colours, but a handful
+ * of draw calls per chunk instead of one mesh per branch.
+ */
+function buildTreeBatches(trees: TreeData[]): ChunkInstanceBatch[] {
+    if (trees.length === 0) return [];
+    const collector = createBatchCollector();
+
+    for (let i = 0; i < trees.length; i++) {
+        const tree = trees[i];
+        composeInstanceMatrix(
+            tree.x,
+            tree.y,
+            tree.z,
+            0,
+            tree.rotY,
+            0,
+            tree.scale,
+            tree.scale,
+            tree.scale,
+            _instanceParentMatrix
+        );
+
+        const pushPart = (
+            part: keyof typeof TREE_PART_OFFSETS,
+            geometry: THREE.BufferGeometry,
+            color: string,
+            roughness: number
+        ) => {
+            const [ox, oy, oz] = TREE_PART_OFFSETS[part];
+            _instancePartMatrix.makeTranslation(ox, oy, oz);
+            collector.push(
+                part,
+                geometry,
+                color,
+                roughness,
+                _instanceParentMatrix.clone().multiply(_instancePartMatrix)
+            );
+        };
+
+        if (tree.species === 'shrub') {
+            pushPart(
+                'shrub',
+                SHARED_GEOMETRIES.shrubGeo,
+                THEME.colors.meadowBase,
+                0.85
+            );
+            continue;
+        }
+
+        pushPart('trunk', SHARED_GEOMETRIES.trunk, THEME.colors.barkBase, 0.9);
+
+        if (tree.species === 'pine') {
+            pushPart(
+                'pineTier1',
+                SHARED_GEOMETRIES.pineTier1,
+                THEME.colors.canopyDark,
+                0.85
+            );
+            pushPart(
+                'pineTier2',
+                SHARED_GEOMETRIES.pineTier2,
+                THEME.colors.meadowBase,
+                0.85
+            );
+            pushPart(
+                'pineTier3',
+                SHARED_GEOMETRIES.pineTier3,
+                THEME.colors.canopyLight,
+                0.85
+            );
+        } else {
+            const isSakura = tree.species === 'sakura';
+            pushPart(
+                'canopyMain',
+                SHARED_GEOMETRIES.canopyMain,
+                isSakura ? THEME.colors.sakuraMid : THEME.colors.meadowBase,
+                0.8
+            );
+            pushPart(
+                'canopySubLeft',
+                SHARED_GEOMETRIES.canopySub,
+                isSakura ? THEME.colors.sakuraLight : THEME.colors.meadowSunlit,
+                0.8
+            );
+            pushPart(
+                'canopySubRight',
+                SHARED_GEOMETRIES.canopySub,
+                isSakura ? THEME.colors.sakuraDeep : THEME.colors.canopyOlive,
+                0.8
+            );
+        }
+    }
+
+    return Array.from(collector.batches.values());
+}
+
+/**
+ * Same batching treatment for boulders, mossy rocks, logs and stepping stones.
+ */
+function buildPropBatches(propsList: PropData[]): ChunkInstanceBatch[] {
+    if (propsList.length === 0) return [];
+    const collector = createBatchCollector();
+
+    for (let i = 0; i < propsList.length; i++) {
+        const prop = propsList[i];
+        composeInstanceMatrix(
+            prop.x,
+            prop.y,
+            prop.z,
+            prop.rot[0],
+            prop.rot[1],
+            prop.rot[2],
+            prop.scale[0],
+            prop.scale[1],
+            prop.scale[2],
+            _instanceParentMatrix
+        );
+
+        const geometry =
+            prop.type === 'rock' || prop.type === 'mossy_rock'
+                ? SHARED_GEOMETRIES.boulder
+                : prop.type === 'log'
+                    ? SHARED_GEOMETRIES.fallenLog
+                    : SHARED_GEOMETRIES.steppingStone;
+
+        collector.push(
+            prop.type,
+            geometry,
+            prop.color,
+            0.88,
+            _instanceParentMatrix,
+            prop.type !== 'stone'
+        );
+
+        if (prop.type === 'mossy_rock') {
+            _instancePartMatrix.makeTranslation(0, 0.55, 0);
+            collector.push(
+                'mossCap',
+                SHARED_GEOMETRIES.mossCap,
+                THEME.colors.meadowBase,
+                0.85,
+                _instanceParentMatrix.clone().multiply(_instancePartMatrix),
+                true
+            );
+        }
+    }
+
+    return Array.from(collector.batches.values());
+}
+
+/**
+ * One instanced draw call per geometry/colour batch. Matrices are uploaded once
+ * on mount, so a whole chunk of vegetation costs no per-frame CPU transform work.
+ */
+const ChunkInstancedBatch: React.FC<{ batch: ChunkInstanceBatch }> = React.memo(
+    ({ batch }) => {
+        const meshRef = useRef<THREE.InstancedMesh>(null);
+
+        useLayoutEffect(() => {
+            const mesh = meshRef.current;
+            if (!mesh) return;
+            for (let i = 0; i < batch.matrices.length; i++) {
+                mesh.setMatrixAt(i, batch.matrices[i]);
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+            mesh.computeBoundingSphere();
+        }, [batch]);
+
+        return (
+            <instancedMesh
+                ref={meshRef}
+                args={[batch.geometry, batch.material, batch.matrices.length]}
+                castShadow={batch.castShadow}
+                receiveShadow
+            />
+        );
+    }
+);
+ChunkInstancedBatch.displayName = 'ChunkInstancedBatch';
 
 interface TreeData {
     id: string;
@@ -91,6 +394,11 @@ interface BiomeLandmarkData {
     | 'rock_pillar_glb'
     | 'flower_v1_glb'
     | 'flower_v2_glb'
+    | 'old_tree_v1_glb'
+    | 'old_tree_v2_glb'
+    | 'tall_tree_v1_glb'
+    | 'tall_tree_v2_glb'
+    | 'pond_glb'
     | 'mushroom_cluster';
     x: number;
     y: number;
@@ -112,7 +420,6 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
         const worldOriginX = cx * CHUNK_SIZE;
         const worldOriginZ = cz * CHUNK_SIZE;
 
-        const grassMeshRef = useRef<THREE.InstancedMesh>(null);
         const flowerMeshRef = useRef<THREE.InstancedMesh>(null);
         const terrainMeshRef = useRef<THREE.Mesh>(null);
 
@@ -212,6 +519,7 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
             propsList,
             biomeLandmarks,
             grassTransforms,
+            bushTransforms,
             flowerTransforms,
             colliders,
         } = useMemo(() => {
@@ -220,6 +528,7 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
             const generatedLandmarks: BiomeLandmarkData[] = [];
             const generatedColliders: SolidCollider[] = [];
             const grassMatrices: THREE.Matrix4[] = [];
+            const bushMatrices: THREE.Matrix4[] = [];
             const flowerMatrices: THREE.Matrix4[] = [];
 
             // Track occupied [wx, wz, radius] to guarantee zero overlapping props
@@ -235,6 +544,8 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
                 if (Math.hypot(wx, wz - 7.5) < 4.5 + radius) return false;
                 // Keep central Sanctuary hero landmarks unobstructed in chunk (0,0)
                 if (Math.hypot(wx, wz + 2.0) < 15.5) return false;
+                // Respect every hand-placed landmark and the spread-out props
+                if (isInsideSanctuaryClearing(wx, wz, radius)) return false;
                 // Keep winding trails clear
                 if (getDistanceToNearestPath(wx, wz) < minPathClearance + radius * 0.5) {
                     return false;
@@ -487,8 +798,8 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
                             x: focalX,
                             y: fy,
                             z: focalZ,
-                            radius: useCottage ? 2.35 : 1.45,
-                            height: 3.6,
+                            radius: useCottage ? 3.2 : 1.45,
+                            height: useCottage ? 5.2 : 3.6,
                             blocksCamera: useCottage,
                         });
 
@@ -581,6 +892,70 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
                             });
                         }
                     }
+                }
+            }
+
+            // C2. GLB tree species (old-growth + tall) scattered like natural trees
+            const GLB_TREE_KINDS = [
+                'old_tree_v1_glb',
+                'old_tree_v2_glb',
+                'tall_tree_v1_glb',
+                'tall_tree_v2_glb',
+            ] as const;
+            for (let i = 0; i < 3; i++) {
+                const lx = (hash2D(cx, cz, i * 17 + 900) - 0.5) * (CHUNK_SIZE - 6);
+                const lz = (hash2D(cx, cz, i * 17 + 901) - 0.5) * (CHUNK_SIZE - 6);
+                const wx = worldOriginX + lx;
+                const wz = worldOriginZ + lz;
+
+                const sample = getBiomeSampleAt(wx, wz);
+                if (sample.clearingFactor > 0.5) continue;
+
+                const treeScale = 0.8 + hash2D(cx + i, cz, 907) * 0.5;
+                if (!isPositionFree(wx, wz, 0.95 * treeScale, 3.6)) continue;
+
+                const wy = getGardenTerrainHeight(wx, wz);
+                const variant = Math.floor(hash2D(cx, cz + i, 911) * 4) % 4;
+
+                generatedLandmarks.push({
+                    id: `lm_glbtree_${chunkKey}_${i}`,
+                    kind: GLB_TREE_KINDS[variant],
+                    x: lx,
+                    y: wy,
+                    z: lz,
+                    rotY: hash2D(cx, cz, 919 + i) * Math.PI * 2,
+                    scale: treeScale,
+                });
+                registerOccupied(wx, wz, 0.9 * treeScale);
+                generatedColliders.push({
+                    id: `col_glbtree_${chunkKey}_${i}`,
+                    x: wx,
+                    y: wy,
+                    z: wz,
+                    radius: 0.5 * treeScale,
+                    height: 6.0,
+                    blocksCamera: false,
+                });
+            }
+
+            // C3. Occasional ponds off the trail
+            if ((cx !== 0 || cz !== 0) && hash2D(cx, cz, 941) < 0.34) {
+                const px = worldOriginX + (hash2D(cx, cz, 943) - 0.5) * (CHUNK_SIZE * 0.5);
+                const pz = worldOriginZ + (hash2D(cx, cz, 947) - 0.5) * (CHUNK_SIZE * 0.5);
+                if (
+                    getDistanceToNearestPath(px, pz) > 6.5 &&
+                    isPositionFree(px, pz, 3.4, 4.2)
+                ) {
+                    generatedLandmarks.push({
+                        id: `lm_pond_${chunkKey}`,
+                        kind: 'pond_glb',
+                        x: px - worldOriginX,
+                        y: getGardenTerrainHeight(px, pz),
+                        z: pz - worldOriginZ,
+                        rotY: hash2D(cx, cz, 953) * Math.PI * 2,
+                        scale: 0.55 + hash2D(cx, cz, 957) * 0.2,
+                    });
+                    registerOccupied(px, pz, 3.4);
                 }
             }
 
@@ -771,28 +1146,33 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
             }
 
             // F. Instanced Grass & Wildflowers Scaled by Biome Flower Density
-            const grassCount = 145;
+            const grassCount = 70;
             for (let g = 0; g < grassCount; g++) {
                 const lx = (hash2D(cx, cz, g * 3 + 500) - 0.5) * CHUNK_SIZE;
                 const lz = (hash2D(cx, cz, g * 3 + 501) - 0.5) * CHUNK_SIZE;
                 const wx = worldOriginX + lx;
                 const wz = worldOriginZ + lz;
 
-                if (getDistanceToNearestPath(wx, wz) < 1.45) continue;
+                // Keep the stone trail completely clear of foliage
+                if (getDistanceToNearestPath(wx, wz) < 2.6) continue;
 
                 const sample = getBiomeSampleAt(wx, wz);
                 const wy = getGardenTerrainHeight(wx, wz);
-                const s = 0.65 + hash2D(cx, cz, g * 3 + 502) * 0.85;
+                const s = 0.72 + hash2D(cx, cz, g * 3 + 502) * 0.62;
 
-                dummy.position.set(lx, wy + 0.12 * s, lz);
+                dummy.position.set(lx, wy + 0.015, lz);
                 dummy.rotation.set(
-                    (seededRandom(g * 7) - 0.5) * 0.25,
+                    (seededRandom(g * 7) - 0.5) * 0.1,
                     seededRandom(g * 13) * Math.PI * 2,
-                    (seededRandom(g * 19) - 0.5) * 0.25
+                    (seededRandom(g * 19) - 0.5) * 0.1
                 );
                 dummy.scale.set(s, s, s);
                 dummy.updateMatrix();
-                grassMatrices.push(dummy.matrix.clone());
+                if (g % 6 === 0) {
+                    bushMatrices.push(dummy.matrix.clone());
+                } else {
+                    grassMatrices.push(dummy.matrix.clone());
+                }
 
                 const flowerRoll = hash2D(cx + g, cz, 601);
                 if (flowerRoll < sample.config.flowerDensity * 0.28) {
@@ -813,18 +1193,45 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
                 propsList: generatedProps,
                 biomeLandmarks: generatedLandmarks,
                 grassTransforms: grassMatrices,
+                bushTransforms: bushMatrices,
                 flowerTransforms: flowerMatrices,
                 colliders: generatedColliders,
             };
         }, [cx, cz, chunkKey, worldOriginX, worldOriginZ]);
 
-        useLayoutEffect(() => {
-            if (grassMeshRef.current) {
-                grassTransforms.forEach((mat, idx) => {
-                    grassMeshRef.current!.setMatrixAt(idx, mat);
-                });
-                grassMeshRef.current.instanceMatrix.needsUpdate = true;
+        // Static vegetation and props are collapsed into instanced batches once
+        const treeBatches = useMemo(() => buildTreeBatches(trees), [trees]);
+        const propBatches = useMemo(
+            () => buildPropBatches(propsList),
+            [propsList]
+        );
+
+        // GLB trees and ponds are drawn with instanced fields: one draw call per
+        // asset per chunk instead of a cloned scene graph for every instance.
+        const glbFieldTransforms = useMemo(() => {
+            const groups: Record<string, THREE.Matrix4[]> = {
+                old_tree_v1_glb: [],
+                old_tree_v2_glb: [],
+                tall_tree_v1_glb: [],
+                tall_tree_v2_glb: [],
+                pond_glb: [],
+            };
+            const scratch = new THREE.Object3D();
+
+            for (const lm of biomeLandmarks) {
+                const bucket = groups[lm.kind];
+                if (!bucket) continue;
+                scratch.position.set(lm.x, lm.y, lm.z);
+                scratch.rotation.set(0, lm.rotY, 0);
+                scratch.scale.setScalar(lm.scale);
+                scratch.updateMatrix();
+                bucket.push(scratch.matrix.clone());
             }
+
+            return groups;
+        }, [biomeLandmarks]);
+
+        useLayoutEffect(() => {
             if (flowerMeshRef.current) {
                 flowerTransforms.forEach((mat, idx) => {
                     flowerMeshRef.current!.setMatrixAt(idx, mat);
@@ -832,7 +1239,7 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
                 flowerMeshRef.current.instanceMatrix.needsUpdate = true;
             }
             onChunkReady?.(`${cx}_${cz}`);
-        }, [grassTransforms, flowerTransforms, onChunkReady, cx, cz]);
+        }, [flowerTransforms, onChunkReady, cx, cz]);
 
         useEffect(() => {
             const colKey = `${cx}_${cz}`;
@@ -1048,193 +1455,70 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
                     }
                 })}
 
-                {trees.map((t) => (
-                    <group
-                        key={t.id}
-                        position={[t.x, t.y, t.z]}
-                        rotation={[0, t.rotY, 0]}
-                        scale={t.scale}
-                    >
-                        {t.species === 'shrub' ? (
-                            <mesh
-                                geometry={SHARED_GEOMETRIES.shrubGeo}
-                                position={[0, 0.38, 0]}
-                                castShadow
-                                receiveShadow
-                            >
-                                <meshStandardMaterial
-                                    color={THEME.colors.meadowBase}
-                                    roughness={0.85}
-                                    flatShading
-                                />
-                            </mesh>
-                        ) : (
-                            <>
-                                <mesh
-                                    geometry={SHARED_GEOMETRIES.trunk}
-                                    position={[0, 1.0, 0]}
-                                    castShadow
-                                    receiveShadow
-                                >
-                                    <meshStandardMaterial
-                                        color={THEME.colors.barkBase}
-                                        roughness={0.9}
-                                        flatShading
-                                    />
-                                </mesh>
-
-                                {t.species === 'pine' ? (
-                                    <group position={[0, 1.85, 0]}>
-                                        <mesh
-                                            geometry={SHARED_GEOMETRIES.pineTier1}
-                                            position={[0, 0, 0]}
-                                            castShadow
-                                            receiveShadow
-                                        >
-                                            <meshStandardMaterial
-                                                color={THEME.colors.canopyDark}
-                                                roughness={0.85}
-                                                flatShading
-                                            />
-                                        </mesh>
-                                        <mesh
-                                            geometry={SHARED_GEOMETRIES.pineTier2}
-                                            position={[0, 1.0, 0]}
-                                            castShadow
-                                            receiveShadow
-                                        >
-                                            <meshStandardMaterial
-                                                color={THEME.colors.meadowBase}
-                                                roughness={0.85}
-                                                flatShading
-                                            />
-                                        </mesh>
-                                        <mesh
-                                            geometry={SHARED_GEOMETRIES.pineTier3}
-                                            position={[0, 1.85, 0]}
-                                            castShadow
-                                            receiveShadow
-                                        >
-                                            <meshStandardMaterial
-                                                color={THEME.colors.canopyLight}
-                                                roughness={0.85}
-                                                flatShading
-                                            />
-                                        </mesh>
-                                    </group>
-                                ) : (
-                                    <group position={[0, 2.55, 0]}>
-                                        <mesh
-                                            geometry={SHARED_GEOMETRIES.canopyMain}
-                                            position={[0, 0.15, 0]}
-                                            castShadow
-                                            receiveShadow
-                                        >
-                                            <meshStandardMaterial
-                                                color={
-                                                    t.species === 'sakura'
-                                                        ? THEME.colors.sakuraMid
-                                                        : THEME.colors.meadowBase
-                                                }
-                                                roughness={0.8}
-                                                flatShading
-                                            />
-                                        </mesh>
-                                        <mesh
-                                            geometry={SHARED_GEOMETRIES.canopySub}
-                                            position={[-0.85, -0.25, 0.45]}
-                                            castShadow
-                                            receiveShadow
-                                        >
-                                            <meshStandardMaterial
-                                                color={
-                                                    t.species === 'sakura'
-                                                        ? THEME.colors.sakuraLight
-                                                        : THEME.colors.meadowSunlit
-                                                }
-                                                roughness={0.8}
-                                                flatShading
-                                            />
-                                        </mesh>
-                                        <mesh
-                                            geometry={SHARED_GEOMETRIES.canopySub}
-                                            position={[0.85, -0.15, -0.35]}
-                                            castShadow
-                                            receiveShadow
-                                        >
-                                            <meshStandardMaterial
-                                                color={
-                                                    t.species === 'sakura'
-                                                        ? THEME.colors.sakuraDeep
-                                                        : THEME.colors.canopyOlive
-                                                }
-                                                roughness={0.8}
-                                                flatShading
-                                            />
-                                        </mesh>
-                                    </group>
-                                )}
-                            </>
-                        )}
-                    </group>
+                {treeBatches.map((batch) => (
+                    <ChunkInstancedBatch key={batch.key} batch={batch} />
                 ))}
 
-                {propsList.map((p) => (
-                    <group
-                        key={p.id}
-                        position={[p.x, p.y, p.z]}
-                        rotation={p.rot}
-                        scale={p.scale}
-                    >
-                        <mesh
-                            geometry={
-                                p.type === 'rock' || p.type === 'mossy_rock'
-                                    ? SHARED_GEOMETRIES.boulder
-                                    : p.type === 'log'
-                                        ? SHARED_GEOMETRIES.fallenLog
-                                        : SHARED_GEOMETRIES.steppingStone
-                            }
-                            castShadow={p.type !== 'stone'}
-                            receiveShadow
-                        >
-                            <meshStandardMaterial
-                                color={p.color}
-                                roughness={0.88}
-                                flatShading
-                            />
-                        </mesh>
-                        {p.type === 'mossy_rock' && (
-                            <mesh
-                                geometry={SHARED_GEOMETRIES.mossCap}
-                                position={[0, 0.55, 0]}
-                                castShadow
-                            >
-                                <meshStandardMaterial
-                                    color={THEME.colors.meadowBase}
-                                    roughness={0.85}
-                                    flatShading
-                                />
-                            </mesh>
-                        )}
-                    </group>
+                {propBatches.map((batch) => (
+                    <ChunkInstancedBatch key={batch.key} batch={batch} />
                 ))}
+
+                <Suspense fallback={null}>
+                    {glbFieldTransforms.old_tree_v1_glb.length > 0 && (
+                        <InstancedGLBField
+                            url={GLB_ASSET_PATHS.oldTreeV1}
+                            targetHeight={7.2}
+                            transforms={glbFieldTransforms.old_tree_v1_glb}
+                        />
+                    )}
+                    {glbFieldTransforms.old_tree_v2_glb.length > 0 && (
+                        <InstancedGLBField
+                            url={GLB_ASSET_PATHS.oldTreeV2}
+                            targetHeight={7.2}
+                            transforms={glbFieldTransforms.old_tree_v2_glb}
+                        />
+                    )}
+                    {glbFieldTransforms.tall_tree_v1_glb.length > 0 && (
+                        <InstancedGLBField
+                            url={GLB_ASSET_PATHS.tallTreeV1}
+                            targetHeight={9.6}
+                            transforms={glbFieldTransforms.tall_tree_v1_glb}
+                        />
+                    )}
+                    {glbFieldTransforms.tall_tree_v2_glb.length > 0 && (
+                        <InstancedGLBField
+                            url={GLB_ASSET_PATHS.tallTreeV2}
+                            targetHeight={9.6}
+                            transforms={glbFieldTransforms.tall_tree_v2_glb}
+                        />
+                    )}
+                    {glbFieldTransforms.pond_glb.length > 0 && (
+                        <InstancedGLBField
+                            url={GLB_ASSET_PATHS.pond}
+                            targetHeight={3.6}
+                            transforms={glbFieldTransforms.pond_glb}
+                        />
+                    )}
+                </Suspense>
 
                 {grassTransforms.length > 0 && (
-                    <instancedMesh
-                        ref={grassMeshRef}
-                        args={[
-                            SHARED_GEOMETRIES.grassBlade,
-                            undefined,
-                            grassTransforms.length,
-                        ]}
-                        frustumCulled={false}
-                    >
-                        <meshStandardMaterial
-                            color={THEME.colors.grassTuftLight}
-                            roughness={0.86}
-                            flatShading
+                    <Suspense fallback={null}>
+                        <InstancedGLBField
+                            url={GLB_ASSET_PATHS.grass}
+                            targetHeight={0.26}
+                            transforms={grassTransforms}
                         />
-                    </instancedMesh>
+                    </Suspense>
+                )}
+
+                {bushTransforms.length > 0 && (
+                    <Suspense fallback={null}>
+                        <InstancedGLBField
+                            url={GLB_ASSET_PATHS.grassBush}
+                            targetHeight={1.0}
+                            transforms={bushTransforms}
+                        />
+                    </Suspense>
                 )}
 
                 {flowerTransforms.length > 0 && (
@@ -1245,7 +1529,6 @@ const TerrainChunk: React.FC<TerrainChunkProps> = React.memo(
                             undefined,
                             flowerTransforms.length,
                         ]}
-                        frustumCulled={false}
                     >
                         <meshStandardMaterial
                             color={THEME.colors.flowerPetal}

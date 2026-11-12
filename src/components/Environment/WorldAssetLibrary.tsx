@@ -100,7 +100,7 @@ export const CozyStorybookCottage: React.FC<WorldAssetProps> = React.memo(
     ({ position = [0, 0, 0], rotationY = 0, scale = 1 }: WorldAssetProps) => (
         <CachedGLBAsset
             url={GLB_ASSET_PATHS.rockHouse}
-            targetHeight={4.2}
+            targetHeight={6.2}
             position={position}
             rotationY={rotationY}
             scale={scale}
@@ -278,6 +278,76 @@ export const MonumentalEvergreenTreeGLB: React.FC<WorldAssetProps> = React.memo(
             rotationY={rotationY}
             scale={scale}
             sinkOffset={-0.18}
+        />
+    )
+);
+
+/**
+ * Broad old-growth tree (`public/models/Vegetation/KeepSakeOldTreeV1|V2.glb`)
+ */
+export const AncientOldTreeGLB: React.FC<
+    WorldAssetProps & { variant?: 1 | 2 }
+> = React.memo(
+    ({
+        position = [0, 0, 0],
+        rotationY = 0,
+        scale = 1,
+        variant = 1,
+    }: WorldAssetProps & { variant?: 1 | 2 }) => (
+        <CachedGLBAsset
+            url={
+                variant === 1
+                    ? GLB_ASSET_PATHS.oldTreeV1
+                    : GLB_ASSET_PATHS.oldTreeV2
+            }
+            targetHeight={7.2}
+            position={position}
+            rotationY={rotationY}
+            scale={scale}
+            sinkOffset={-0.16}
+        />
+    )
+);
+
+/**
+ * Slender tall tree (`public/models/Vegetation/KeepSakeTallTreeV1|V2.glb`)
+ */
+export const SlenderTallTreeGLB: React.FC<
+    WorldAssetProps & { variant?: 1 | 2 }
+> = React.memo(
+    ({
+        position = [0, 0, 0],
+        rotationY = 0,
+        scale = 1,
+        variant = 1,
+    }: WorldAssetProps & { variant?: 1 | 2 }) => (
+        <CachedGLBAsset
+            url={
+                variant === 1
+                    ? GLB_ASSET_PATHS.tallTreeV1
+                    : GLB_ASSET_PATHS.tallTreeV2
+            }
+            targetHeight={9.6}
+            position={position}
+            rotationY={rotationY}
+            scale={scale}
+            sinkOffset={-0.16}
+        />
+    )
+);
+
+/**
+ * Sculpted pond (`public/models/Vegetation/KeepSakePond.glb`)
+ */
+export const GardenPondGLB: React.FC<WorldAssetProps> = React.memo(
+    ({ position = [0, 0, 0], rotationY = 0, scale = 1 }: WorldAssetProps) => (
+        <CachedGLBAsset
+            url={GLB_ASSET_PATHS.pond}
+            targetHeight={3.6}
+            position={position}
+            rotationY={rotationY}
+            scale={scale}
+            sinkOffset={-0.04}
         />
     )
 );

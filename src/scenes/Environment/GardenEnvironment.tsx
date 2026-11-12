@@ -14,19 +14,21 @@ import { MemoryRadiance } from './MemoryRadiance';
 import { collisionManager } from '../../systems/Collision/collisionSystem';
 import { playerTelemetry, useGameStore } from '../../store/useGameStore';
 import {
+    AncientOldTreeGLB,
     CozyStorybookCottage,
     EngravedMemoryMonument,
     ExplorerCampsite,
+    GardenPondGLB,
     GlowingButterflies,
     MemoryFlowerGLB,
     MonumentalBlossomTreeGLB,
     MonumentalEvergreenTreeGLB,
     RedToriiGate,
+    SlenderTallTreeGLB,
     SpottedMushroomCluster,
     StandingMemoryBanner,
     StandingStonePillar,
     StoneArchwayGLB,
-    StylizedReflectionPond,
     WoodenArchedBridge,
     WoodenCargoCart,
     WoodenFenceSection,
@@ -212,27 +214,31 @@ export const GardenEnvironment: React.FC = () => {
             toriiY: h(-0.6, -10.2),
             pondY: h(-5.8, -14.2),
             campY: h(6.8, -13.5),
-            pillar1Y: h(-9.5, -1.2),
-            pillar2Y: h(-8.2, -6.5),
+            pillar1Y: h(-18.2, 9.6),
+            pillar2Y: h(-21.0, -12.0),
             bridge2Y: h(4.2, -9.2),
-            noticeY: h(-2.4, 6.2),
-            monumentY: h(-5.6, 4.6),
-            banner1Y: h(1.1, -9.6),
-            banner2Y: h(-2.3, -9.6),
-            lamp1Y: h(1.8, 7.6),
-            lamp2Y: h(-1.9, 0.2),
-            lamp3Y: h(1.8, -1.8),
-            cartY: h(8.2, -3.2),
-            signY: h(-1.6, 3.8),
-            fence1Y: h(7.4, -1.2),
-            fence2Y: h(9.4, -2.5),
-            mush1Y: h(4.5, 3.2),
-            mush2Y: h(-4.8, -1.5),
-            mush3Y: h(3.6, -5.8),
-            fl1Y: h(4.8, 4.1),
-            fl2Y: h(7.5, 0.9),
-            fl3Y: h(-2.8, 5.2),
-            fl4Y: h(0.9, -8.5),
+            noticeY: h(6.2, 26.0),
+            monumentY: h(-14.0, 16.0),
+            banner1Y: h(6.4, -21.5),
+            banner2Y: h(-8.2, -23.0),
+            lamp1Y: h(4.6, 15.8),
+            lamp2Y: h(-10.4, -13.8),
+            lamp3Y: h(10.2, 7.4),
+            cartY: h(19.0, -13.0),
+            signY: h(3.6, 12.8),
+            fence1Y: h(19.4, -7.6),
+            fence2Y: h(16.8, -8.4),
+            mush1Y: h(10.4, 13.4),
+            mush2Y: h(-13.6, -2.8),
+            mush3Y: h(-7.4, -21.8),
+            fl1Y: h(-3.4, 10.8),
+            fl2Y: h(14.2, 11.5),
+            fl3Y: h(-17.4, -4.0),
+            fl4Y: h(2.4, -17.5),
+            oldTree1Y: h(-24.0, 18.0),
+            oldTree2Y: h(28.0, 10.0),
+            tallTree1Y: h(-26.0, -22.0),
+            tallTree2Y: h(23.0, -27.0),
         };
     }, [worldSeed]);
 
@@ -247,7 +253,7 @@ export const GardenEnvironment: React.FC = () => {
             { id: 'arch_pillar_left', x: -6.8 - 1.75 * Math.cos(0.34), y: coords.archY, z: -3.5 + 1.75 * Math.sin(0.34), radius: 0.85, height: 5.5, blocksCamera: true },
             { id: 'arch_pillar_right', x: -6.8 + 1.75 * Math.cos(0.34), y: coords.archY, z: -3.5 - 1.75 * Math.sin(0.34), radius: 0.85, height: 5.5, blocksCamera: true },
             // Cozy Storybook Cottage (KeepSakeRockHouse-compressed.glb)
-            { id: 'cottage_col', x: 11.5, y: coords.cottageY, z: -6.5, radius: 2.45, height: 4.0, blocksCamera: true },
+            { id: 'cottage_col', x: 11.5, y: coords.cottageY, z: -6.5, radius: 3.2, height: 5.4, blocksCamera: true },
             // Red Torii Gate Pillars (KeepSakeEntranceJapanese.glb)
             { id: 'torii_left', x: -0.6 - 1.45, y: coords.toriiY, z: -10.2, radius: 0.42, height: 3.8, blocksCamera: true },
             { id: 'torii_right', x: -0.6 + 1.45, y: coords.toriiY, z: -10.2, radius: 0.42, height: 3.8, blocksCamera: true },
@@ -255,11 +261,16 @@ export const GardenEnvironment: React.FC = () => {
             { id: 'camp_tent', x: 7.65, y: coords.campY, z: -13.9, radius: 1.35, height: 2.2, blocksCamera: false },
             { id: 'camp_fire', x: 5.85, y: coords.campY, z: -12.35, radius: 0.65, height: 1.0, blocksCamera: false },
             // Core Sanctuary Memory Pedestals
-            { id: 'ped_1', x: 1.65, y: h(1.65, 5.8), z: 5.8, radius: 0.9, height: 2.0, blocksCamera: false },
+            { id: 'ped_1', x: 5.2, y: h(5.2, 7.2), z: 7.2, radius: 0.9, height: 2.0, blocksCamera: false },
             { id: 'ped_2', x: 2.85, y: h(2.85, 3.6), z: 3.6, radius: 1.65, height: 3.2, blocksCamera: false },
-            { id: 'ped_3', x: -3.6, y: h(-3.6, 2.2), z: 2.2, radius: 1.15, height: 2.8, blocksCamera: false },
-            { id: 'ped_4', x: 2.1, y: h(2.1, -4.8), z: -4.8, radius: 1.15, height: 2.8, blocksCamera: false },
-            { id: 'ped_5', x: -2.6, y: h(-2.6, -6.8), z: -6.8, radius: 1.65, height: 3.2, blocksCamera: false },
+            { id: 'ped_3', x: -7.4, y: h(-7.4, 4.0), z: 4.0, radius: 1.15, height: 2.8, blocksCamera: false },
+            { id: 'ped_4', x: 8.6, y: h(8.6, -8.4), z: -8.4, radius: 1.15, height: 2.8, blocksCamera: false },
+            { id: 'ped_5', x: -7.6, y: h(-7.6, -9.8), z: -9.8, radius: 1.65, height: 3.2, blocksCamera: false },
+            // New rim trees
+            { id: 'old_tree_1', x: -24.0, y: coords.oldTree1Y, z: 18.0, radius: 0.95, height: 6.0, blocksCamera: true },
+            { id: 'old_tree_2', x: 28.0, y: coords.oldTree2Y, z: 10.0, radius: 0.95, height: 6.0, blocksCamera: true },
+            { id: 'tall_tree_1', x: -26.0, y: coords.tallTree1Y, z: -22.0, radius: 0.8, height: 8.0, blocksCamera: true },
+            { id: 'tall_tree_2', x: 23.0, y: coords.tallTree2Y, z: -27.0, radius: 0.8, height: 8.0, blocksCamera: true },
         ]);
     }, [coords, worldSeed]);
 
@@ -268,47 +279,62 @@ export const GardenEnvironment: React.FC = () => {
             <ChunkedTerrain />
 
             {/* Hero Sanctuary Landmarks (Using Project GLB Assets) */}
-            <StoneArchwayGLB position={[-6.8, coords.archY, -3.5]} rotationY={0.34} scale={1.08} />
+            {/* Both entrances are authored facing along their local X axis, so a
+                quarter turn points the openings down the trail towards the camera. */}
+            <StoneArchwayGLB
+                position={[-6.8, coords.archY, -3.5]}
+                rotationY={0.34 + Math.PI / 2}
+                scale={1.08}
+            />
             <MonumentalBlossomTreeGLB position={[6.2, coords.sakuraY, 2.2]} rotationY={0.25} scale={1.05} />
             <MonumentalEvergreenTreeGLB position={[-11.5, coords.evergreenY, 4.8]} rotationY={-0.6} scale={0.98} />
 
+            {/* Broad old-growth and tall trees spread around the sanctuary rim */}
+            <AncientOldTreeGLB position={[-24.0, coords.oldTree1Y, 18.0]} rotationY={0.6} variant={1} scale={1.05} />
+            <AncientOldTreeGLB position={[28.0, coords.oldTree2Y, 10.0]} rotationY={-1.4} variant={2} scale={1.1} />
+            <SlenderTallTreeGLB position={[-26.0, coords.tallTree1Y, -22.0]} rotationY={0.35} variant={1} scale={1.02} />
+            <SlenderTallTreeGLB position={[23.0, coords.tallTree2Y, -27.0]} rotationY={-2.2} variant={2} scale={1.08} />
+
             {/* Structures & Landmarks */}
             <CozyStorybookCottage position={[11.5, coords.cottageY, -6.5]} rotationY={-0.65} />
-            <RedToriiGate position={[-0.6, coords.toriiY, -10.2]} rotationY={0.08} />
-            <StandingStonePillar position={[-9.5, coords.pillar1Y, -1.2]} rotationY={0.4} />
-            <StandingStonePillar position={[-8.2, coords.pillar2Y, -6.5]} rotationY={-0.25} scale={0.88} />
+            <RedToriiGate
+                position={[-0.6, coords.toriiY, -10.2]}
+                rotationY={0.08 + Math.PI / 2}
+            />
+            <StandingStonePillar position={[-18.2, coords.pillar1Y, 9.6]} rotationY={0.4} />
+            <StandingStonePillar position={[-21.0, coords.pillar2Y, -12.0]} rotationY={-0.25} scale={0.88} />
 
             {/* Water & Bridges */}
-            <StylizedReflectionPond position={[-5.8, coords.pondY + 0.02, -14.2]} scale={1.15} />
+            <GardenPondGLB position={[-5.8, coords.pondY + 0.02, -14.2]} rotationY={-0.42} scale={1.05} />
             <WoodenArchedBridge position={[-5.8, coords.pondY + 0.05, -14.2]} rotationY={0.42} />
             <WoodenStraightBridge position={[4.2, coords.bridge2Y + 0.04, -9.2]} rotationY={-0.3} />
 
             {/* Interactables & Memory Elements */}
-            <WoodenMemoryNoticeboard position={[-2.4, coords.noticeY, 6.2]} rotationY={0.45} />
-            <EngravedMemoryMonument position={[-5.6, coords.monumentY, 4.6]} rotationY={0.62} />
-            <StandingMemoryBanner position={[1.1, coords.banner1Y, -9.6]} rotationY={-0.2} />
-            <StandingMemoryBanner position={[-2.3, coords.banner2Y, -9.6]} rotationY={0.2} />
-            <WoodenLanternPost position={[1.8, coords.lamp1Y, 7.6]} rotationY={-2.4} />
-            <WoodenLanternPost position={[-1.9, coords.lamp2Y, 0.2]} rotationY={0.5} />
-            <WoodenLanternPost position={[1.8, coords.lamp3Y, -1.8]} rotationY={-2.6} />
+            <WoodenMemoryNoticeboard position={[6.2, coords.noticeY, 26.0]} rotationY={0.45} />
+            <EngravedMemoryMonument position={[-14.0, coords.monumentY, 16.0]} rotationY={0.62} />
+            <StandingMemoryBanner position={[6.4, coords.banner1Y, -21.5]} rotationY={-0.2} />
+            <StandingMemoryBanner position={[-8.2, coords.banner2Y, -23.0]} rotationY={0.2} />
+            <WoodenLanternPost position={[4.6, coords.lamp1Y, 15.8]} rotationY={-2.4} />
+            <WoodenLanternPost position={[-10.4, coords.lamp2Y, -13.8]} rotationY={0.5} />
+            <WoodenLanternPost position={[10.2, coords.lamp3Y, 7.4]} rotationY={-2.6} />
 
             {/* Both GLB Flower Variants around the Sanctuary */}
-            <MemoryFlowerGLB position={[4.8, coords.fl1Y, 4.1]} rotationY={0.4} scale={1.1} variant={1} />
-            <MemoryFlowerGLB position={[7.5, coords.fl2Y, 0.9]} rotationY={1.2} scale={1.0} variant={2} />
-            <MemoryFlowerGLB position={[-2.8, coords.fl3Y, 5.2]} rotationY={-0.7} scale={1.05} variant={1} />
-            <MemoryFlowerGLB position={[0.9, coords.fl4Y, -8.5]} rotationY={2.1} scale={1.15} variant={2} />
+            <MemoryFlowerGLB position={[-3.4, coords.fl1Y, 10.8]} rotationY={0.4} scale={1.1} variant={1} />
+            <MemoryFlowerGLB position={[14.2, coords.fl2Y, 11.5]} rotationY={1.2} scale={1.0} variant={2} />
+            <MemoryFlowerGLB position={[-17.4, coords.fl3Y, -4.0]} rotationY={-0.7} scale={1.05} variant={1} />
+            <MemoryFlowerGLB position={[2.4, coords.fl4Y, -17.5]} rotationY={2.1} scale={1.15} variant={2} />
 
             {/* Utility & World Props */}
             <ExplorerCampsite position={[6.8, coords.campY, -13.5]} rotationY={-0.45} />
-            <WoodenCargoCart position={[8.2, coords.cartY, -3.2]} rotationY={-0.8} />
-            <WoodenSignpost position={[-1.6, coords.signY, 3.8]} rotationY={0.35} />
-            <WoodenFenceSection position={[7.4, coords.fence1Y, -1.2]} rotationY={-0.55} />
-            <WoodenFenceSection position={[9.4, coords.fence2Y, -2.5]} rotationY={-0.55} />
+            <WoodenCargoCart position={[19.0, coords.cartY, -13.0]} rotationY={-0.8} />
+            <WoodenSignpost position={[3.6, coords.signY, 12.8]} rotationY={0.35} />
+            <WoodenFenceSection position={[19.4, coords.fence1Y, -7.6]} rotationY={-0.55} />
+            <WoodenFenceSection position={[16.8, coords.fence2Y, -8.4]} rotationY={-0.55} />
 
             {/* Ambient Details: Spotted Mushrooms & Glowing Butterflies */}
-            <SpottedMushroomCluster position={[4.5, coords.mush1Y, 3.2]} scale={1.15} />
-            <SpottedMushroomCluster position={[-4.8, coords.mush2Y, -1.5]} scale={1.0} />
-            <SpottedMushroomCluster position={[3.6, coords.mush3Y, -5.8]} scale={1.2} />
+            <SpottedMushroomCluster position={[10.4, coords.mush1Y, 13.4]} scale={1.15} />
+            <SpottedMushroomCluster position={[-13.6, coords.mush2Y, -2.8]} scale={1.0} />
+            <SpottedMushroomCluster position={[-7.4, coords.mush3Y, -21.8]} scale={1.2} />
             <GlowingButterflies center={[0, 1.5, 2]} count={10} />
             <GlowingButterflies center={[-5.8, coords.pondY + 1.2, -14.2]} count={6} />
 
