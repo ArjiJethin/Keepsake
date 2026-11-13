@@ -8,6 +8,7 @@ import {
     getGardenTerrainNormal,
 } from '../../scenes/Environment/lowPolyUtils';
 import { collisionManager } from '../../systems/Collision/collisionSystem';
+import { gameAudio } from '../../systems/Audio/gameAudio';
 import { ExplorerModelMesh, type ExplorerRigRefs } from './ExplorerModelMesh';
 import {
     FemaleWandererGLB,
@@ -457,6 +458,15 @@ export const PlayerCharacter: React.FC = () => {
                 );
                 bodyGroup.current.position.y = Math.sin(c) * 0.016;
             }
+
+            // Keep footstep SFX locked to the procedural stride phase.
+            gameAudio.syncLocomotion({
+                source: 'fallback',
+                phase: (c % (Math.PI * 2)) / (Math.PI * 2),
+                weight: 1,
+                speed: horizSpeed,
+                grounded: playerTelemetry.isGrounded,
+            });
         }
     });
 

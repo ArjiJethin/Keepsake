@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { playerTelemetry } from '../../store/useGameStore';
+import { gameAudio } from '../../systems/Audio/gameAudio';
 
 export const FEMALE_WANDERER_GLB_PATH = '/KeepSakeFemale-v2-animated.glb';
 
@@ -376,6 +377,34 @@ export const FemaleWandererGLB: React.FC<FemaleWandererGLBProps> = React.memo(
                 }
 
                 mixer.update(delta);
+
+                // Footsteps fire on the clip's own foot-contact boundaries so
+                // the SFX stays locked to the visible stride at any speed.
+                if (Walk_2 && Sprint) {
+                    const walkW = walkWeightRef.current;
+                    const sprintW = sprintWeightRef.current;
+                    if (sprintW > walkW) {
+                        gameAudio.syncLocomotion({
+                            source: 'sprint',
+                            phase:
+                                Sprint.time /
+                                (Sprint.getClip().duration || 0.833333),
+                            weight: sprintW,
+                            speed: liveSpeed,
+                            grounded: isGrounded,
+                        });
+                    } else {
+                        gameAudio.syncLocomotion({
+                            source: 'walk',
+                            phase:
+                                Walk_2.time /
+                                (Walk_2.getClip().duration || 1.133333),
+                            weight: walkW,
+                            speed: liveSpeed,
+                            grounded: isGrounded,
+                        });
+                    }
+                }
             }
 
             if (lanternLightRef.current) {
